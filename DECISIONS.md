@@ -20,3 +20,29 @@ rule 10). Newest at the bottom of each phase.
   resolution. Relative imports use explicit `.js` extensions.
 - **LLM default model:** `claude-sonnet-5` (a current Sonnet-class model) per
   spec §4.1 / TASKS T1.5. Configurable via `ANTHROPIC_MODEL`.
+
+### T0.2 docker-compose
+
+- **Images pinned:** `timescale/timescaledb:2.17.2-pg16`, `redis:7-alpine`,
+  `ghcr.io/gnzsnz/ib-gateway:stable`. Pinning the Timescale tag avoids surprise
+  major bumps in the money path.
+- **IB gateway paper port is 4004 on the compose network, not 4002.** The
+  gnzsnz image runs the API on `127.0.0.1:4001/4002` internally and socat-
+  republishes to `0.0.0.0:4003/4004` (live/paper). Other containers therefore
+  connect to `ib-gateway:4004` for paper; the `api` service overrides
+  `IB_GATEWAY_PORT=4004`. `.env.example` keeps `4002` as the native/default for
+  a gateway run outside compose. Documented in `infra/README.md`.
+- **Gateway not host-published:** uses `expose` only (no `ports:`), so it is
+  reachable solely from `trading-net` members — satisfies the T0.2 AC and
+  spec §10. Postgres/redis are published to `127.0.0.1` only, for local dev
+  tooling (migrations, psql).
+- **api/web behind the `apps` compose profile:** their Dockerfiles arrive with
+  T0.4 / T0.6. `docker compose up` brings the data+broker layer healthy today;
+  `docker compose --profile apps up` runs the full stack once the apps exist.
+- **Gateway healthcheck** is a TCP probe on the socat paper port (4004) with a
+  150s `start_period` (IBC login is slow). It proves the socat listener is up,
+  not full session auth — the app's `/healthz` (T0.4) confirms the live link.
+- **Verification deferred:** Docker is not installed on the current dev machine,
+  so `docker compose up` healthy-state verification is deferred to a Docker-
+  capable host. Compose structure validated statically (5 services; gateway
+  internal-only; api→4004).

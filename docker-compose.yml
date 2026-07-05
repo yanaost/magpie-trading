@@ -1,0 +1,175 @@
+name: trading-app
+
+# ---------------------------------------------------------------------------
+# Networks
+#   Everything lives on the internal `trading-net` bridge. The IB gateway has
+#   NO host port mapping — it is reachable only by other services on this
+#   network (TASKS T0.2 AC: "gateway reachable from api container only").
+# ---------------------------------------------------------------------------
+networks:
+  trading-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  ib-settings:
+
+services:
+  # -------------------------------------------------------------------------
+  # PostgreSQL + TimescaleDB (candles hypertable, all domain state)
+  # -------------------------------------------------------------------------
+  postgres:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trader
+      POSTGRES_PASSWORD: trader
+      POSTGRES_DB: trading
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/timescaledb/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      # Published to host for local dev tooling (migrations, psql). Safe: not
+      # the gateway. Remove in production behind Tailscale if desired.
+      - "127.0.0.1:5432:5432"
+    networks:
+      - trading-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trader -d trading"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # -------------------------------------------------------------------------
+  # Redis (BullMQ queues + pub/sub + kill-switch cache)
+  # -------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks:
+      - trading-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # -------------------------------------------------------------------------
+  # Interactive Brokers Gateway (paper) via gnzsnz/ib-gateway + IBC auto-login
+  #
+  # IMPORTANT PORT MAPPING: the image runs the TWS API on 127.0.0.1:4001 (live)
+  # / 4002 (paper) INSIDE the container and uses socat to republish them on
+  # 0.0.0.0:4003 (live) / 0.0.0.0:4004 (paper). Therefore other containers must
+  # connect to ib-gateway:4004 for the paper account (see api env below).
+  #
+  # No `ports:` block => NOT published to the host. Only `expose` on the
+  # compose network. This is the T0.2 security requirement.
+  # -------------------------------------------------------------------------
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:stable
+    restart: unless-stopped
+    environment:
+      TWS_USERID: ${IB_USERNAME}
+      TWS_PASSWORD: ${IB_PASSWORD}
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      READ_ONLY_API: ${READ_ONLY_API:-no}
+      TWOFA_TIMEOUT_ACTION: ${TWOFA_TIMEOUT_ACTION:-restart}
+      RELOGIN_AFTER_TWOFA_TIMEOUT: ${RELOGIN_AFTER_TWOFA_TIMEOUT:-yes}
+      AUTO_RESTART_TIME: ${AUTO_RESTART_TIME:-11:59 PM}
+      BYPASS_WARNING: ${BYPASS_WARNING:-yes}
+      TWS_ACCEPT_INCOMING: ${TWS_ACCEPT_INCOMING:-accept}
+      EXISTING_SESSION_DETECTED_ACTION: ${EXISTING_SESSION_DETECTED_ACTION:-primary}
+      TIME_ZONE: ${TIME_ZONE:-Etc/UTC}
+      TZ: ${TIME_ZONE:-Etc/UTC}
+      VNC_SERVER_PASSWORD: ${VNC_SERVER_PASSWORD:-}
+    volumes:
+      - ib-settings:/home/ibgateway/tws_settings
+    expose:
+      - "4003" # live API (socat)  — internal only
+      - "4004" # paper API (socat) — internal only
+      - "5900" # VNC              — internal only
+    networks:
+      - trading-net
+    healthcheck:
+      # socat republishes the paper API on 4004 once the gateway is up.
+      # Long start_period: IBC login + gateway boot can take ~1–2 min.
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c 'echo -n > /dev/tcp/127.0.0.1/4004' 2>/dev/null || exit 1",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 150s
+
+  # -------------------------------------------------------------------------
+  # API server (NestJS: REST + WS gateway + BullMQ workers)
+  # Dockerfile lands in T0.4. Behind the `apps` profile until then so
+  # `docker compose up` can bring the data+broker layer healthy on its own.
+  # Run the full stack with:  docker compose --profile apps up
+  # -------------------------------------------------------------------------
+  api:
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://trader:trader@postgres:5432/trading
+      REDIS_URL: redis://redis:6379
+      IB_GATEWAY_HOST: ib-gateway
+      # Paper account is on 4004 inside the compose network (socat), NOT 4002.
+      IB_GATEWAY_PORT: "4004"
+    ports:
+      - "127.0.0.1:3001:3001"
+    networks:
+      - trading-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ib-gateway:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # -------------------------------------------------------------------------
+  # Web dashboard (Next.js). Dockerfile lands in T0.6.
+  # -------------------------------------------------------------------------
+  web:
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - trading-net
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
