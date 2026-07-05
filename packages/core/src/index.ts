@@ -5,9 +5,22 @@
  * duplicated elsewhere) and for the sacred money-path modules: the risk
  * manager, order construction, the execution port, and fill models.
  *
- * The full domain surface is implemented across Phase 1 (see TASKS.md T1.x).
- * This entry point is intentionally small during Phase 0.
+ * Money representation: prices, quantities and cash are plain `number`s here so
+ * the money path can do arithmetic and round deliberately (see `roundCents`);
+ * the repository layer converts the DB's numeric-strings at the boundary. The
+ * LLM never sees or sets any of these numbers (spec §4.2). Every payload that
+ * crosses a process/db boundary carries a zod schema (T1.1 AC).
  */
+
+// Domain vocabulary and payload/behavioral contracts (spec §3.1).
+export * from "./enums.js";
+export * from "./market.js";
+export * from "./risk.js";
+export * from "./signal.js";
+export * from "./proposal.js";
+export * from "./position.js";
+export * from "./execution.js";
+export * from "./strategy.js";
 
 /** Semantic version of the core domain contract. */
 export const CORE_VERSION = "0.1.0" as const;

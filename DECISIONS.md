@@ -181,3 +181,47 @@ rule 10). Newest at the bottom of each phase.
   seeded strategies server-rendered; a real `socket.io-client` received repeated
   `health` pushes 3s apart. `NEXT_PUBLIC_API_URL`/`API_URL` split the browser vs
   server API base.
+
+## T1.1 — Domain core (packages/core)
+
+- **Money is `number` in the domain, string only at the DB edge.** Prices, qty
+  and cash are plain `number`s in every core type so the money path can do
+  arithmetic and round deliberately (`roundCents`). The repository layer converts
+  Drizzle's `numeric`→string columns at the boundary. Ambiguity resolved toward
+  the simpler option (spec ground rule) — no decimal/bignum library for the MVP;
+  positions are equities and whole-cent granularity is sufficient.
+- **Zod on payloads, bare interfaces for behavior.** Everything that crosses a
+  process/db boundary (`QuantSignal`, `AnalysisRequest`, `LLMAnalysis`,
+  `ProposalDraft`, `TradeProposal`, `Position`, `ExitAction`, bracket/order/fill
+  payloads, all enums) carries a zod schema + inferred type. The in-process
+  behavioral contracts (`MarketContext`, `ExecutionPort`, `Strategy`) are plain
+  TS interfaces with no schema — they are method surfaces, not serialized data.
+- **`ProposalDraft` vs `TradeProposal` split.** A strategy's `buildProposal`
+  returns a `ProposalDraft` carrying a *requested* qty only; the risk manager
+  (T1.2) owns sizing and produces the finalized `TradeProposal` with
+  `riskUsd`/`riskPct`/`status`. This encodes the rule "the LLM/strategy never
+  sets final size" in the type system, not just convention.
+- **`parseLlmAnalysis` fails safe to a veto.** The untrusted LLM response is
+  parsed with `safeParse`; any malformed, out-of-range, or non-object input (and
+  the timeout/transport path via `vetoAnalysis`) returns a zero-confidence
+  `veto`, never a `proceed`. This is the money-critical guard from spec §4.2 and
+  carries the heaviest test coverage.
+- **Exit-before-entry baked into the schemas.** `ProposalDraft`/`TradeProposal`
+  require a `stop` and an `exitPlan`, and `BracketOrderRequest` requires a
+  `stopPrice`; there is no way to construct a valid entry without a protective
+  stop. Every entry is a bracket (parent + stop + optional take-profit).
+- **`GLOBAL_RISK_LIMITS` frozen; `RiskParams` may only tighten.** The global
+  ceilings (spec §5) are a frozen constant; per-strategy `RiskParams` are
+  overrides the risk manager will enforce as tightenings, never loosenings.
+  `DEFAULT_RISK_PARAMS` is the loosest config still inside the ceilings.
+- **`LivePromotionLockedError` lives in core.** Both the SIM and the future IB
+  execution ports throw the same named error for any `LIVE` order, so the
+  no-live-trading lock (ground rule 3) is one shared type, not duplicated.
+- **`ExecutionTarget` superset kept as `SIM`/`PAPER`/`LIVE`** and
+  `StrategyTimeframe` as `intraday|swing|weekly|observation|filter` to mirror the
+  `@magpie/db` pgEnums exactly — enums are the single source of truth and must
+  not drift from the schema.
+- **AC verified:** `tsc` compiles clean across all 4 workspace projects; JSDoc on
+  every exported symbol; zod schemas on all boundary payloads; 48 core tests pass
+  at 100% statement/branch/function/line coverage (threshold enforced at 90% via
+  `packages/core/vitest.config.ts`, `strategy.ts` excluded as type-only).
