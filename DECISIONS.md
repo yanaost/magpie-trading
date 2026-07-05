@@ -375,3 +375,56 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
 - **AC verified:** 6 analyst tests (proceed / veto / garbage / transport-throw /
   no-signalId / timeout), 41 api tests total; typecheck + eslint + prettier clean;
   full `pnpm -r build` green.
+
+## T1.6 — Signal pipeline orchestrator
+
+- **The orchestrator is I/O-free; everything is a port.** `PipelineService`
+  wires `scan` → LLM analyst → crowding hook → RiskManager → mode gate → position
+  monitor purely through the interfaces in `pipeline.types.ts`. This is what makes
+  the whole mode-gate flow integration-testable with in-memory fakes (the T1.6
+  AC) and swappable for Drizzle/BullMQ in production.
+- **"Core emits, caller persists" holds.** The service sequences the pure
+  collaborators (RiskManager sizes/gates, the analyst fails safe to veto, the
+  execution port brackets every entry) and records the audit/journal trail; it
+  never re-derives money-path numbers.
+- **Mode gate (spec §3.2):** AUTO persists → places a market bracket → records the
+  bracket → marks the proposal executed → audits `auto_execute`; APPROVE persists
+  a pending proposal → notifies (WS `proposals`) → journals; WATCH journals only;
+  OFF short-circuits before scanning. Veto, crowding, and risk-rejection each stop
+  the signal before the gate (risk-rejection also persists a `risk_events` row).
+- **Position→bracket correlation via `BracketIndex`.** SIM brackets live in the
+  Simulator's memory and the emitted `Position` carries no bracket id, so the
+  pipeline records `strategyId:ticker → bracketId` at placement and resolves it in
+  the monitor. Keyed on `strategyId:ticker` because "no averaging down" guarantees
+  at most one open bracket per key. In-memory now; a Drizzle resolver can replace
+  it behind the same port once orders/fills are reconciled.
+- **`Strategy.manage` → bracket ops.** close(no qty)/scale-out-to-zero → cancel +
+  clear index; close(qty)/scale-out → modify newQty = remaining; modify-stop /
+  modify-target → modify the corresponding leg. Every action is journaled.
+- **TTL expiry sweep.** A repeatable `expiry` job marks pending proposals past
+  `expiry` as `expired` (guarded on `status='pending'` so a concurrent
+  approval/execution wins) and writes an `audit_log` before/after record.
+- **Analyst injected as its own singleton port**, not per-runtime. It's stateless
+  and shared, so `LLM_ANALYST` binds to an adapter over `LlmAnalystService` rather
+  than being threaded through the strategy registry.
+- **BullMQ wiring shares one Redis root.** The Bull root moved to an exported
+  `BullRootModule` in `queue.module.ts`; `PipelineModule` imports `QueueModule`
+  and `registerQueue`s the `pipeline` queue against it (scan / monitor / expiry
+  jobs). Scheduler is idempotent (`upsertJobScheduler`) and resilient to Redis
+  being down at boot, matching the demo heartbeat.
+- **Environment providers target SIM only (the MVP rung).** `ExecutionPortProvider`
+  serves a single in-process `Simulator`; `MarketContextProvider` reads candles
+  from the `candles` table, synthesizes a quote from the latest close (the sim
+  tolerates a null quote), and takes open positions from the sim. Account equity
+  is a fixed MVP constant (100k) for risk sizing — a live-marked equity model
+  lands with execution/reconciliation (T1.8). PAPER/LIVE rungs throw until the
+  broker adapter exists.
+- **Strategy registry joins DB row ⋈ code instance.** `DrizzleStrategyRegistry`
+  reads the live mode/target/riskOverrides from `strategies` and pairs it with a
+  registered `Strategy` instance; rows without code are skipped. `STRATEGY_INSTANCES`
+  is empty until strategy #3 (QUAL/SPHB) registers in T1.7, so the scheduler
+  no-ops safely until then.
+- **AC verified:** 10 pipeline integration tests (AUTO / APPROVE / WATCH / OFF /
+  veto / crowding / risk-reject / monitor modify-stop / monitor close-cancels /
+  TTL expiry→expired+audit), 51 api tests total; typecheck + eslint + prettier
+  clean; full `pnpm -r build` green.

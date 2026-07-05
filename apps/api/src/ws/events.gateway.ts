@@ -39,4 +39,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitAlert(payload: unknown): void {
     this.server?.emit("alerts", payload);
   }
+
+  /** Broadcast a pending proposal (spec §8 `proposals`) awaiting approval. */
+  emitProposal(payload: unknown): void {
+    this.server?.emit("proposals", payload);
+  }
 }

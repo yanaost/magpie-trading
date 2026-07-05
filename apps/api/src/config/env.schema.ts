@@ -48,6 +48,17 @@ export const envSchema = z.object({
 
   /** Interval for pushing /healthz to dashboards over WS (ms). Default 5s. */
   HEALTH_BROADCAST_MS: z.coerce.number().int().positive().default(5_000),
+
+  /** Signal-pipeline scan cadence (ms). Default 60s (intraday strategies poll faster). */
+  PIPELINE_SCAN_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  /** Position-monitor cadence (ms). Default 30s — exits must react promptly. */
+  PIPELINE_MONITOR_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30_000),
+  /** Proposal TTL-expiry sweep cadence (ms). Default 60s. */
+  PIPELINE_EXPIRY_SWEEP_MS: z.coerce.number().int().positive().default(60_000),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
