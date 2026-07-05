@@ -7,6 +7,7 @@
 import { BullModule } from "@nestjs/bullmq";
 import { Module } from "@nestjs/common";
 import { Simulator } from "@magpie/core";
+import { allStrategies } from "@magpie/strategies";
 import { EventsModule } from "../ws/events.module.js";
 import { KillSwitchModule } from "../killswitch/killswitch.module.js";
 import { LlmModule } from "../llm/llm.module.js";
@@ -66,8 +67,8 @@ import {
     PipelineService,
     PipelineProcessor,
     PipelineScheduler,
-    // Strategy code instances — empty until strategy #3 registers (T1.7).
-    { provide: STRATEGY_INSTANCES, useValue: [] },
+    // Strategy code instances joined to the `strategies` config rows by id (T1.7).
+    { provide: STRATEGY_INSTANCES, useValue: allStrategies() },
     // The single in-process SIM execution port.
     { provide: SIMULATOR, useFactory: () => new Simulator() },
     // Ports → implementations.

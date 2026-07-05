@@ -428,3 +428,36 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
   veto / crowding / risk-reject / monitor modify-stop / monitor close-cancels /
   TTL expiry→expired+audit), 51 api tests total; typecheck + eslint + prettier
   clean; full `pnpm -r build` green.
+
+## T1.7 — Strategy #3: QUAL/SPHB quality-rotation pair
+
+- **New package `@magpie/strategies`** (pure domain, mirrors `@magpie/core`:
+  ESM, `zod`, vitest, no I/O/clock). Holds concrete `Strategy` implementations
+  that plug into the T1.6 pipeline. `allStrategies()` is the registration list
+  the API joins against the `strategies` config rows by `id`.
+- **Thesis:** `SPHB/QUAL` (high-beta ÷ quality) mean-reverts. A **fresh** cross
+  of the ratio above `SMA·(1+entryBand)` (20-week SMA, 5% band) triggers a long
+  **QUAL** rotation; the written exit closes when the ratio reverts to/below its
+  SMA. Fresh-cross gating (prev bar below the band) means one signal per stretch,
+  not one per extended bar.
+- **Sync-manage contract (the key design call):** `Strategy.manage` is
+  synchronous but the reversion test needs candle data, which `MarketContext`
+  only exposes asynchronously. Rather than widen the shared core interface, the
+  strategy **caches the latest `RatioView` during `scan`** (which the engine runs
+  each cycle before the monitor) and `manage` reads that cache. Single pair, at
+  most one open position, so no keying is needed. Documented in the class header.
+- **Indicators are pure functions** (`ratioSeries`, `sma`, `ratioView`) with
+  explicit `null` warm-up so a caller can't mistake an incomplete window for a
+  real average — unit-tested directly, no fixtures.
+- **Stop** is a fixed 8% below entry backing the thesis exit; there is no price
+  target (the exit is ratio-driven). The risk manager sizes to the stop distance
+  from the nominal `requestedQty`.
+- **Seed row already existed** (`qual-sphb`, weekly, seeded WATCH/SIM); T1.7 only
+  supplies the code instance via `STRATEGY_INSTANCES: allStrategies()`.
+- **AC verified:** synthetic-fixture suite (warm-up gating, single fresh-cross
+  signal, long-QUAL proposal w/ 8% stop, proceed/veto prompt, hold-then-revert
+  exit) + a **2-year (104-week) weekly replay** asserting ≥2 clean round trips,
+  never >1 concurrent position, every exit strictly after entry, every entry a
+  genuine band stretch. 15 strategies tests; `src/qual-sphb` 100% stmts/lines,
+  90%+ branch. Full workspace: 158 tests, typecheck + eslint + prettier + build
+  all green.
