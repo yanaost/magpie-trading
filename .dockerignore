@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/build
+**/.next
+**/coverage
+**/*.tsbuildinfo
+.git
+.github
+**/*.log
+.env
+.env.*
+!.env.example
+pgdata/
+redisdata/
+ib-gateway-data/
+backups/

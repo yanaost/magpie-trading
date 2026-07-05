@@ -1,0 +1,32 @@
+import { Module } from "@nestjs/common";
+import { LoggerModule } from "nestjs-pino";
+import { ConfigModule } from "./config/config.module.js";
+import { InfraModule } from "./infra/infra.module.js";
+import { HealthModule } from "./health/health.module.js";
+import { QueueModule } from "./queue/queue.module.js";
+import { EventsModule } from "./ws/events.module.js";
+
+/**
+ * Root module. Order matters: config is global and loaded first; infra
+ * (db/redis) and the pino logger depend on it; feature modules follow.
+ */
+@Module({
+  imports: [
+    ConfigModule,
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: process.env.NODE_ENV === "production" ? "info" : "debug",
+        transport:
+          process.env.NODE_ENV === "production"
+            ? undefined
+            : { target: "pino-pretty", options: { singleLine: true } },
+        autoLogging: false,
+      },
+    }),
+    InfraModule,
+    HealthModule,
+    QueueModule,
+    EventsModule,
+  ],
+})
+export class AppModule {}

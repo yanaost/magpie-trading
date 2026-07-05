@@ -72,3 +72,29 @@ rule 10). Newest at the bottom of each phase.
   from zero → 13 tables; seed → 8 strategies all `WATCH`/`SIM`; candles PK =
   `(ticker, timeframe, ts)`; re-seed inserts 0. Hypertable creation itself is
   verified on the Timescale Docker image (deferred, extension absent locally).
+
+### T0.4 NestJS skeleton
+
+- **NestJS runs as ESM** (`"type": "module"`, NodeNext) to match the rest of the
+  monorepo and consume the ESM `@trading-app/db`/`core` packages natively —
+  avoids the CJS→ESM interop pain. Requires `experimentalDecorators`,
+  `emitDecoratorMetadata`, and `useDefineForClassFields: false` in the api
+  tsconfig for Nest DI to work; relative imports carry explicit `.js`.
+- **Config** is a hand-rolled global module validating `process.env` with zod
+  (`loadConfig`), exposed via the `APP_CONFIG` token (frozen object). Chose this
+  over `@nestjs/config` for a single, typed, fail-fast validation point.
+- **Logging** via `nestjs-pino`; Nest's logger is routed through pino
+  (`app.useLogger`). Pretty transport in dev, JSON in prod.
+- **Health** (`/healthz`) probes db (`select 1`), redis (`ping`), and gateway
+  (TCP connect) independently with a 1.5s timeout each; never throws — a down
+  dep yields `"down"` and overall `status: "degraded"`. `sql` is re-exported
+  from `@trading-app/db` so the app doesn't depend on drizzle directly.
+- **BullMQ** via `@nestjs/bullmq`; connection parsed from `REDIS_URL` (isolated
+  from the shared health/cache ioredis client). Demo heartbeat uses
+  `upsertJobScheduler` (idempotent) and is resilient to Redis being down at boot.
+  Interval is `DEMO_JOB_INTERVAL_MS` (default 30_000).
+- **WS gateway** is a socket.io stub (`EventsGateway`) ready to emit the spec §8
+  channels; only `gateway-status` broadcast is wired for Phase 0.
+- **Verified live**: booted the built app against local Postgres 17.6 + Redis;
+  `/healthz` returned `db:up, redis:up, gateway:down` (nothing on 4002), and the
+  heartbeat logged every tick. AC met.
