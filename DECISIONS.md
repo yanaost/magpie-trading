@@ -225,3 +225,36 @@ rule 10). Newest at the bottom of each phase.
   every exported symbol; zod schemas on all boundary payloads; 48 core tests pass
   at 100% statement/branch/function/line coverage (threshold enforced at 90% via
   `packages/core/vitest.config.ts`, `strategy.ts` excluded as type-only).
+
+## T1.2 — RiskManager (packages/core)
+
+- **Pure, DB-free gate.** `RiskManager` reads a `RiskContext` snapshot (equity,
+  open positions, kill-switch flag) and returns a `RiskDecision` — either an
+  approved, fully-sized `TradeProposal` or a rejection carrying the exact
+  `RiskEvent` (rule + reason + context + severity) for the caller to persist to
+  `risk_events`. Core stays free of DB deps; T1.3/pipeline own persistence.
+- **Config clamps to the globals, never exceeds.** The constructor computes
+  `limits` as `min(param, GLOBAL_RISK_LIMITS)` per field, encoding "config can
+  tighten but not exceed" (spec §5) in code rather than trusting the caller.
+- **Rule order = cheap structural checks first, sizing last:** kill switch →
+  stop validity (right side of entry) → no averaging down (same
+  ticker+side+strategy already open) → max total / per-strategy / per-ticker
+  position caps → per-trade sizing → total open risk. First failing rule wins,
+  giving one precise reason string per rejection.
+- **Sizing is whole-share, budget-bounded.** `qty = floor((equity ×
+  maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
+  rejection (stop too wide). `riskUsd`/`riskPct` are stamped by the manager, so
+  by construction an approved proposal is always within the per-trade budget.
+- **Rule codes are a stable contract.** `RISK_RULES` is a closed union persisted
+  verbatim to `risk_events.rule`; reason strings are asserted exactly in the
+  table-driven tests so a wording change can't silently drift.
+- **Kill-switch trip lives here, action lives in T1.3.** `checkDailyLoss`
+  compares day P&L% to `-dailyLossLimitPct` and, on breach, returns a `tripped`
+  result with a *critical* `daily_loss_limit` event. Trips exactly at −3%
+  (`≤ -limit`); the actual block-orders / all-strategies-→-WATCH / notify is the
+  kill-switch service (T1.2 provides the trigger).
+- **Options guard is types-now.** `definedRiskOptionsOnly` is carried on
+  `RiskParams` but not runtime-enforced (equities MVP; options math is Phase 3).
+- **AC verified:** table-driven tests for every rule with exact persisted reason
+  strings; kill-switch trip test at −3% day P&L; 66 core tests, 100%
+  statements/functions/lines, 97.95% branches (threshold 90%).

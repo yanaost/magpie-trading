@@ -90,6 +90,13 @@ export const BracketRoleSchema = z.enum(BRACKET_ROLES);
 /** Which leg of the parent + stop + take-profit bracket an order is. */
 export type BracketRole = z.infer<typeof BracketRoleSchema>;
 
+/** Risk-event severity (spec §7 `risk_events.severity`). */
+export const SEVERITIES = ["info", "warning", "critical"] as const;
+/** Zod schema for {@link Severity}. */
+export const SeveritySchema = z.enum(SEVERITIES);
+/** How serious a risk event is: informational, a warning, or critical. */
+export type Severity = z.infer<typeof SeveritySchema>;
+
 /** Position lifecycle (spec §7). */
 export const POSITION_STATUSES = ["open", "closed"] as const;
 /** Zod schema for {@link PositionStatus}. */
