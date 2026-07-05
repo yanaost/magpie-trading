@@ -616,3 +616,58 @@ describe("PipelineService — proposal decisions (T1.8)", () => {
     expect(await h.service.listPendingProposals()).toHaveLength(0);
   });
 });
+
+describe("PipelineService — injectSyntheticProposal (T1.9 dev trigger)", () => {
+  it("AUTO: injects a synthetic signal that executes a real SIM bracket", async () => {
+    const h = build({ mode: "AUTO" });
+    const outcome = await h.service.injectSyntheticProposal("qual-sphb", {
+      entry: 100,
+    });
+    expect(outcome.kind).toBe("executed");
+    expect(h.port.placed).toHaveLength(1);
+    expect(h.port.placed[0]).toMatchObject({ ticker: "QUAL", side: "long" });
+  });
+
+  it("APPROVE: injects a pending proposal awaiting a decision", async () => {
+    const h = build({ mode: "APPROVE" });
+    const outcome = await h.service.injectSyntheticProposal("qual-sphb", {
+      entry: 100,
+    });
+    expect(outcome.kind).toBe("proposed");
+    expect(h.port.placed).toHaveLength(0);
+    expect(h.notifier.notified).toHaveLength(1);
+    const pending = await h.service.listPendingProposals();
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({ ticker: "QUAL", status: "pending" });
+  });
+
+  it("WATCH: journals the would-trade without ordering", async () => {
+    const h = build({ mode: "WATCH" });
+    const outcome = await h.service.injectSyntheticProposal("qual-sphb");
+    expect(outcome.kind).toBe("watched");
+    expect(h.port.placed).toHaveLength(0);
+  });
+
+  it("OFF: is a no-op", async () => {
+    const h = build({ mode: "OFF" });
+    const outcome = await h.service.injectSyntheticProposal("qual-sphb");
+    expect(outcome.kind).toBe("watched");
+    expect(h.port.placed).toHaveLength(0);
+  });
+
+  it("stops at the risk gate when the kill switch is active", async () => {
+    const h = build({ mode: "AUTO", killSwitch: true });
+    const outcome = await h.service.injectSyntheticProposal("qual-sphb", {
+      entry: 100,
+    });
+    expect(outcome.kind).toBe("risk-rejected");
+    expect(h.port.placed).toHaveLength(0);
+  });
+
+  it("throws for an unknown strategy", async () => {
+    const h = build({ mode: "AUTO" });
+    await expect(h.service.injectSyntheticProposal("nope")).rejects.toThrow(
+      /unknown strategy/,
+    );
+  });
+});

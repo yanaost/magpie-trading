@@ -59,6 +59,17 @@ export const envSchema = z.object({
     .default(30_000),
   /** Proposal TTL-expiry sweep cadence (ms). Default 60s. */
   PIPELINE_EXPIRY_SWEEP_MS: z.coerce.number().int().positive().default(60_000),
+
+  /**
+   * Enables the dev-only synthetic-signal trigger endpoint (`POST /dev/...`),
+   * used for the T1.9 full-loop demo. Unset means "enabled outside production"
+   * (resolved against NODE_ENV in the controller); set `"true"`/`"false"` to
+   * force it on/off explicitly.
+   */
+  DEV_TRIGGER_ENABLED: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true")),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

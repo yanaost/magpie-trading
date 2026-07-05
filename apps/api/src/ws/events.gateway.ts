@@ -44,4 +44,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitProposal(payload: unknown): void {
     this.server?.emit("proposals", payload);
   }
+
+  /** Broadcast an open-positions snapshot (spec §8 `positions`). */
+  emitPositions(payload: unknown): void {
+    this.server?.emit("positions", payload);
+  }
 }

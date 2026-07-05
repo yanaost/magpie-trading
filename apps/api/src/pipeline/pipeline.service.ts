@@ -21,6 +21,7 @@ import type {
   ExitAction,
   MarketContext,
   Position,
+  ProposalDraft,
   ProposalStatus,
   QuantSignal,
   Side,
@@ -372,6 +373,73 @@ export class PipelineService {
   /** List the pending proposals for the approval surface (REST/Telegram/WS). */
   async listPendingProposals() {
     return this.proposals.listPendingDetailed();
+  }
+
+  /**
+   * Inject a deterministic synthetic signal for the T1.9 demo (dev-only; gated
+   * by the caller). Bypasses the quant scan and the LLM analyst — it fabricates
+   * a long-QUAL draft at the ticker's last quote (or a stable fallback) — but
+   * runs the *real* risk manager and mode gate, so the money path (sizing,
+   * limits, persistence, notification, and AUTO execution) is exercised exactly
+   * as in production. In APPROVE mode this leaves a pending proposal for the
+   * dashboard/Telegram to approve.
+   *
+   * @param strategyId - the strategy to inject for
+   * @param opts.ticker - override symbol (defaults to QUAL)
+   * @param opts.entry - override entry price (defaults to last quote, else 100)
+   */
+  async injectSyntheticProposal(
+    strategyId: string,
+    opts: { ticker?: string; entry?: number } = {},
+  ): Promise<SignalOutcome> {
+    const runtime = await this.registry.getRuntime(strategyId);
+    if (!runtime) throw new Error(`unknown strategy ${strategyId}`);
+    if (runtime.mode === "OFF") {
+      return { kind: "watched", ticker: opts.ticker ?? "QUAL" };
+    }
+
+    const now = this.clock.now();
+    const ctx = await this.marketCtx.contextFor(runtime.executionTarget, now);
+    const ticker = (opts.ticker ?? "QUAL") as Ticker;
+    const quote = await ctx.latestQuote(ticker);
+    const entry = opts.entry ?? quote?.last ?? 100;
+    const stop = Math.round(entry * 0.92 * 100) / 100;
+
+    const { id: signalId } = await this.signals.persist({
+      strategyId,
+      ticker,
+      trigger: { fired: true, synthetic: true, source: "dev-trigger" },
+      quantMetrics: { entry, stop },
+    });
+
+    const draft: ProposalDraft = {
+      strategyId,
+      signalId,
+      ticker,
+      side: "long",
+      requestedQty: 100,
+      entry,
+      stop,
+      exitPlan: { stopLoss: stop, rules: ["dev synthetic — exit at mean"] },
+    };
+    const decision = runtime.riskManager.evaluate(draft, {
+      now,
+      equity: await ctx.accountEquity(),
+      executionTarget: runtime.executionTarget,
+      openPositions: await ctx.openPositions(),
+      killSwitchActive: await this.killSwitch.isActive(),
+    });
+    if (!decision.approved) {
+      await this.riskEvents.persist(decision.event);
+      return {
+        kind: "risk-rejected",
+        ticker,
+        rule: decision.event.rule,
+      };
+    }
+
+    const proposal: TradeProposal = { ...decision.proposal, signalId };
+    return this.gateByMode(runtime, proposal, now);
   }
 
   /**

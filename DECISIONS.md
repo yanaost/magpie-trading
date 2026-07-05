@@ -505,3 +505,54 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
   Telegram notifier/poller unit tests fake the Bot API (no network); controller
   tests assert the outcome→HTTP-status mapping. Full workspace: 178 tests,
   typecheck + eslint + prettier + build all green.
+
+## T1.9 — Dashboard v1 (apps/web + apps/api)
+
+- **Dev trigger bypasses the strategy, not the money path.** The full-loop demo
+  needs a signal on demand, but strategy #3's `buildProposal` is stateful and
+  won't fire deterministically. `POST /dev/trigger/:strategyId`
+  (`PipelineService.injectSyntheticProposal`) fabricates a `ProposalDraft`
+  directly, then runs it through the **real** `RiskManager.evaluate` and the
+  **real** `gateByMode` — so risk sizing, the kill-switch gate, the
+  no-averaging-down rule, and the AUTO/APPROVE/WATCH/OFF fork are all exercised
+  exactly as in production. Only the quant scan and the LLM analyst are skipped.
+  Verified live: APPROVE→approve fills a SIM bracket and opens a position;
+  tripping the kill switch turns the same trigger into
+  `risk-rejected: kill_switch_active`; a second QUAL trigger while long is
+  rejected `no_averaging_down`.
+- **Dev trigger is gated, on by default off-prod.** `DEV_TRIGGER_ENABLED`
+  (tri-state env) overrides; unset it defaults to `NODE_ENV !== "production"`.
+  The controller throws `ForbiddenException` when disabled, so it can ship in
+  the same image without exposing a synthetic-order endpoint in prod.
+- **Controller seeds the SIM quote at the proposal entry.** Before injecting,
+  the dev controller calls `simulator.updateQuote({bid,ask,last: entry})` so an
+  approved market bracket fills at a known price — the demo is reproducible
+  regardless of DB candle history (SIM positions are in-memory and never
+  persisted).
+- **Live UI = 3s poll + WS nudge, no new server plumbing.** Positions and
+  approvals panels poll their REST endpoints every 3s and also subscribe to the
+  existing socket.io gateway; the API `emit`s bare `positions` / `proposals`
+  channel pings (after a fill / new proposal) that just trigger an immediate
+  refetch. Avoids pushing full state over WS or standing up a new subscription
+  protocol for v1.
+- **Distance-to-stop, not P&L, this milestone.** The Simulator doesn't mark open
+  positions (`unrealizedPnl` is always 0), so the positions table shows
+  entry-relative distance-to-stop and open risk ($qty × |entry−stop|) instead of
+  live P&L. The spec's P&L sparkline is **deferred to T2**, which brings marked
+  positions. Noted so the missing sparkline reads as scoped, not dropped.
+- **Config changes are audited.** `PATCH /api/strategies/:id` writes the mode /
+  target change and an `audit_log` row (`before`/`after`, actor) in the same
+  call; the registry re-reads mode/target every scan tick, so a change takes
+  effect without a redeploy.
+- **Re-arm doesn't restore modes.** A kill-switch trip demotes every strategy to
+  WATCH; re-arming (typed-phrase confirm) clears the halt but leaves everything
+  in WATCH — promoting back to AUTO/APPROVE is a deliberate manual step, called
+  out in the kill-switch panel copy.
+- **Tests.** `injectSyntheticProposal` pipeline tests (AUTO executes, APPROVE
+  pends + notifies, WATCH/OFF watched, kill-switch rejects, unknown strategy
+  throws) reuse the T1.6 in-memory harness; `DashboardService` tests cover
+  distance-to-stop (long/short/missing-stop), portfolio rollup, and the audited
+  `setStrategy`; `DevController` tests cover the enable/disable gate and the
+  seed→inject→broadcast path. Full workspace: 195 tests, typecheck + eslint +
+  prettier + build (incl. Next.js) all green. Full loop also verified live
+  end-to-end over REST against Postgres + Redis.
