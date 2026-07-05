@@ -8,6 +8,7 @@ import { EventsModule } from "./ws/events.module.js";
 import { MarketDataModule } from "./market-data/market-data.module.js";
 import { DashboardModule } from "./dashboard/dashboard.module.js";
 import { KillSwitchModule } from "./killswitch/killswitch.module.js";
+import { LlmModule } from "./llm/llm.module.js";
 
 /**
  * Root module. Order matters: config is global and loaded first; infra
@@ -33,6 +34,7 @@ import { KillSwitchModule } from "./killswitch/killswitch.module.js";
     MarketDataModule,
     DashboardModule,
     KillSwitchModule,
+    LlmModule,
   ],
 })
 export class AppModule {}

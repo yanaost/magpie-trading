@@ -336,3 +336,42 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
 - **AC verified:** 21 simulator tests (87 total in core), incl. both property
   tests; coverage on `simulator.ts` 95.5% stmts / 90.7% branch (≥90% money-path
   bar); typecheck + eslint clean.
+
+## T1.5 — LLM analyst service
+
+- **The service is the single trust boundary; collaborators are dumb.** The
+  transport (`AnthropicAnalystClient`) only calls Claude and returns the raw
+  candidate/text or throws; the repository only appends a row. All fail-safe
+  policy lives in `LlmAnalystService`: it converts **every** failure mode —
+  timeout, transport error, model refusal, malformed JSON, schema violation —
+  into a deterministic **veto** via `@magpie/core`'s `vetoAnalysis` /
+  `parseLlmAnalysis`. So the money path can never mistake a broken analysis for
+  a pass (spec §4.2), and the policy is testable in one place without a network.
+- **30s hard ceiling enforced in the service, not just the SDK.** An
+  `AbortController` + `setTimeout` races the transport (`Promise.race`); on
+  overrun it aborts the in-flight request and vetoes. Belt-and-suspenders: the
+  SDK call _also_ gets `{ timeout: 30_000 }`, but the service-level guard is what
+  the unit test exercises (a hanging client is aborted and vetoed).
+- **Structured output via `output_config.format` (json_schema), not the Zod
+  parse helper.** `zodOutputFormat` targets `zod/v4` while the repo is on zod v3;
+  to avoid version coupling the client sends a hand-written JSON schema
+  (`LLM_OUTPUT_JSON_SCHEMA`) and `JSON.parse`s the constrained text, then the
+  core `LLMAnalysisSchema` re-validates it. Request-side constraint + core-side
+  trust boundary are kept separate on purpose.
+- **Model is configurable, default `claude-sonnet-5`.** Read from
+  `ANTHROPIC_MODEL` (already in the env schema); a Sonnet-class default per the
+  task spec. Web search enabled per-request via the `web_search_20260209` server
+  tool when `AnalysisRequest.webSearch` is set.
+- **The LLM still never sees numbers.** The prompt carries only the strategy's
+  question, required checks, and non-sizing context; the system prompt states the
+  model's entire authority is a binary proceed/veto and to veto when uncertain.
+- **Persistence is best-effort and skipped without a `signalId`.**
+  `llm_analyses.signal_id` is a NOT NULL FK, so un-persisted signals (no id) skip
+  the write and just return the verdict. A persist failure is logged, never
+  thrown — a DB hiccup can't flip a verdict or crash the pipeline.
+- **Live smoke test is out of CI.** `pnpm --filter @magpie/api smoke:llm`
+  (`src/llm/smoke.ts`) hits the real API and needs `ANTHROPIC_API_KEY`; unit
+  tests mock the transport, so CI needs no key.
+- **AC verified:** 6 analyst tests (proceed / veto / garbage / transport-throw /
+  no-signalId / timeout), 41 api tests total; typecheck + eslint + prettier clean;
+  full `pnpm -r build` green.
