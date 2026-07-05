@@ -258,3 +258,38 @@ rule 10). Newest at the bottom of each phase.
 - **AC verified:** table-driven tests for every rule with exact persisted reason
   strings; kill-switch trip test at −3% day P&L; 66 core tests, 100%
   statements/functions/lines, 97.95% branches (threshold 90%).
+
+## T1.3 — Kill switch service (apps/api)
+
+- **New `kill_switch` singleton table** (migration `0001`) is the source of
+  truth: `active`, `reason`, `tripped_by`, `tripped_at`, `rearmed_at`. Keyed by
+  the constant `KILL_SWITCH_ID` ("global"); the repository ensures the row lazily
+  (`insert … onConflictDoNothing`) so no seed step is required.
+- **Redis mirrors the flag for the order path.** Postgres is authoritative;
+  `killswitch:active` in Redis gives the executor a cheap cross-process check.
+  `isActive()` reads cache-first, falls back to the DB, and — critically —
+  **fails safe to ACTIVE (blocked)** if both are unreachable.
+- **Collaborator injection over direct DB coupling.** The service depends on four
+  small interfaces (repository, strategy registry, audit sink, cache) with
+  Drizzle/Redis implementations in prod and in-memory fakes in the test. This is
+  what makes the AC's integration test run in CI with no live Postgres/Redis.
+- **Demotion is AUTO/APPROVE → WATCH only.** WATCH and OFF are left untouched —
+  the kill switch stops trading; it must never *wake* a disabled strategy. The
+  pre-change mode is captured (select-then-update) so the audit `before` is real.
+- **Re-arm needs the exact typed phrase** `REARM_CONFIRMATION` ("RE-ARM
+  TRADING") and, by design, does **not** restore strategy modes — re-enabling a
+  strategy is a separate, deliberate user action. `DELETE /killswitch` carries
+  the confirmation in the body; a wrong phrase is a 400 and leaves state active.
+- **Append-only audit on every transition:** one `kill_switch/global` row per
+  trip and re-arm, plus one `strategy/<id>` demotion row each (spec ground
+  rule 7). Broadcasts a `critical` alert on trip / `warning` on re-arm via the
+  WS `alerts` channel (new `EventsGateway.emitAlert`).
+- **Enforcement seam for T1.4+:** `assertOrdersAllowed()` throws
+  `KillSwitchActiveError` (403); the simulator/executor calls it before placing
+  any order. The RiskManager already accepts `killSwitchActive` in its context,
+  so the switch gates both the risk gate and the order path.
+- **AC verified:** integration test trips the switch and asserts a pending
+  proposal cannot execute, AUTO/APPROVE strategies demote to WATCH (WATCH/OFF
+  untouched), and audit rows exist for the trip + each demotion; plus wrong-phrase
+  rejection, re-arm clears the block without restoring modes, and fail-safe.
+  Migration `0001` applied cleanly to a live Postgres 17; 106 tests green.

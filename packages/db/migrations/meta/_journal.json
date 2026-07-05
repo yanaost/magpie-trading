@@ -8,6 +8,13 @@
       "when": 1783231577076,
       "tag": "0000_spicy_terrax",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783247196948,
+      "tag": "0001_sturdy_wraith",
+      "breakpoints": true
     }
   ]
 }

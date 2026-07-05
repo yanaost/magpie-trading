@@ -12,6 +12,7 @@
  */
 import {
   bigserial,
+  boolean,
   index,
   integer,
   jsonb,
@@ -348,6 +349,26 @@ export const auditLog = pgTable(
   },
   (t) => [index("audit_entity_idx").on(t.entityType, t.entityId)],
 );
+
+/**
+ * kill_switch — the global safety flag (spec §5, T1.3). A singleton row keyed
+ * `KILL_SWITCH_ID`. When `active`, the order path blocks all new orders and the
+ * service demotes every strategy to `WATCH`. Re-arming requires a typed
+ * confirmation and never auto-restores strategy modes.
+ */
+export const killSwitch = pgTable("kill_switch", {
+  id: text("id").primaryKey(),
+  active: boolean("active").notNull().default(false),
+  reason: text("reason"),
+  /** "user" | "system:<rule>" | strategyId */
+  trippedBy: text("tripped_by"),
+  trippedAt: timestamp("tripped_at", { withTimezone: true }),
+  rearmedAt: timestamp("rearmed_at", { withTimezone: true }),
+  updatedAt: updatedAt(),
+});
+
+/** The singleton primary-key value for the {@link killSwitch} row. */
+export const KILL_SWITCH_ID = "global";
 
 /** candles — OHLCV, TimescaleDB hypertable, composite key (spec §7). */
 export const candles = pgTable(

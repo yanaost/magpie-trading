@@ -34,4 +34,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitHealth(payload: unknown): void {
     this.server?.emit("health", payload);
   }
+
+  /** Broadcast an alert/notification (spec §8 `alerts`) — e.g. kill-switch trips. */
+  emitAlert(payload: unknown): void {
+    this.server?.emit("alerts", payload);
+  }
 }
