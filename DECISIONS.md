@@ -293,3 +293,46 @@ rule 10). Newest at the bottom of each phase.
   untouched), and audit rows exist for the trip + each demotion; plus wrong-phrase
   rejection, re-arm clears the block without restoring modes, and fail-safe.
   Migration `0001` applied cleanly to a live Postgres 17; 106 tests green.
+
+## T1.4 — Simulator / SIM ExecutionPort (packages/core)
+
+- **The sim engine is pure, in-memory core — like `RiskManager`.** It does no
+  I/O: state (virtual portfolios, working brackets, fills) lives in `Map`s and is
+  driven by market events. The T1.6 pipeline / apps/api owns persistence
+  (`sim_portfolios`, `orders`, `fills`, `positions`) and the audit log. This is
+  what keeps the money path testable in CI with no Postgres/Redis.
+- **Deterministic by construction (replay, T3.1).** No `Date.now`/`Math.random`:
+  ids come from a monotonic counter (`sim-b1`, `sim-o1`), and every fill/open/
+  close timestamp is threaded in from the driving `onBar`/`updateQuote` event.
+  The "1,000 random trades" and "one-leg-only" property tests use a seeded
+  mulberry32 PRNG instead of adding a `fast-check` dependency — the package keeps
+  its zero-runtime-dep discipline (only `zod`).
+- **Pessimistic fill model (spec §4.4).** Fills never cross at mid: a buy lifts
+  the ask, a sell hits the bid, each degraded further by adverse slippage
+  (default 5 bps). When no live quote exists a bid/ask is synthesized around the
+  bar close with a configurable spread (default 10 bps). IB fixed-tier commission:
+  `$0.005/share`, `$1.00` min, capped at `1%` of trade value.
+- **Market entries fill immediately if a quote already exists, else on the next
+  event.** Limit entries wait until price trades through the limit (bar spans it,
+  or the quote's marketable side reaches it). Avoids look-ahead while still giving
+  natural immediate fills in live-sim.
+- **One-cancels-other with a pessimistic tie-break.** Stop and target are
+  monitored on each bar; if a single bar spans both levels the **stop is assumed
+  hit first**, so a bracket can never realize both legs (proved by the property
+  test: a closed bracket has exactly 2 fills — one entry, one exit). Gap-through
+  is modeled: a long stop fills at `min(stop, bar.open)` (worse than the stop).
+- **Accounting balances to the cent.** Cash mutations and realized P&L are
+  computed from the *same* `roundCents`-rounded fill values, so when the book is
+  flat `cash − startingCash === Σ realizedPnl` exactly — asserted over 1,000
+  seeded random round-trips.
+- **No naked positions.** `modifyBracket` enforces downward-only qty (a reduction
+  scales out the difference at market; an increase throws — no averaging up);
+  cancelling a *filled* bracket flattens the position at the current mark rather
+  than leaving it unprotected.
+- **`resetPortfolio` returns a `PortfolioResetRecord`** (cash/realized before,
+  open positions discarded, cash after, `resetAt`) for the caller to write to
+  `audit_log` and stamp `sim_portfolios.reset_at` — reset does no logging itself,
+  matching the "core emits, caller persists" pattern.
+- **AC verified:** 21 simulator tests (87 total in core), incl. both property
+  tests; coverage on `simulator.ts` 95.5% stmts / 90.7% branch (≥90% money-path
+  bar); typecheck + eslint clean.
