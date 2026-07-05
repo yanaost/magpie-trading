@@ -139,3 +139,45 @@ rule 10). Newest at the bottom of each phase.
   host, so `ingest:backfill` against a live gateway and market-hours realtime
   bars are deferred to an IB-connected host. The parsing, pacing, reconnect, and
   DB-write paths are all covered by tests / real-Postgres checks per the AC.
+
+## T0.6 — Bare dashboard (apps/web)
+
+- **Next.js 15 App Router, standalone tsconfig.** `apps/web` does not extend the
+  repo's NodeNext base tsconfig — Next wants `moduleResolution: "bundler"` and
+  `jsx: "preserve"`, and NodeNext's explicit-`.js`-extension rule fights JSX
+  imports. Kept `strict: true` (+ `noUnusedLocals/Parameters`) to satisfy ground
+  rule 1. ESLint stays centralized at the repo root (`next lint` disabled via
+  `eslint.ignoreDuringBuilds`); added `**/next-env.d.ts` to root ESLint ignores
+  since that generated file uses a triple-slash reference the config forbids.
+- **Auth = HMAC-derived session cookie, checked in a server component (not edge
+  middleware).** The single-user "password" is `APP_AUTH_SECRET`. Login
+  constant-time-compares the submitted secret, then stores
+  `HMAC-SHA256(secret, "trading-app-session-v1")` (base64url) in an HttpOnly,
+  SameSite=Lax cookie (`secure` in prod). Every protected request re-derives the
+  token and `timingSafeEqual`s it. Auth lives in `requireAuth()` called from the
+  `/` server component so it can use `node:crypto` (unavailable on the edge
+  runtime); no middleware. The cookie holds a derived token, never the secret.
+- **Login via plain form POST + 303 redirect, no client JS.** `/login` is a
+  server component with a `<form method="post" action="/api/login">`; the route
+  handler sets the cookie and redirects. Wrong secret → `303 /login?error=1`
+  with no cookie. Keeps the auth path dependency-free and progressively
+  enhanceable.
+- **Live status over WebSocket via a server-side `StatusBroadcaster`.** A NestJS
+  provider (`ws/status.broadcaster.ts`) polls `HealthService.check()` every
+  `HEALTH_BROADCAST_MS` (default 5s) and emits the report on the gateway's
+  `health` channel; it emits once on init so a fresh client isn't blank. The
+  `LiveStatus` client component subscribes with `socket.io-client` and renders
+  gateway/dep badges. Chose server-push over client polling so the page reflects
+  `/healthz` live per the AC.
+- **Dashboard data via two read-only REST endpoints.** `GET /api/strategies`
+  (Drizzle select over `strategies`) and `GET /api/candles/counts` (raw
+  `group by ticker, timeframe` — small integer counts) back the tables. The `/`
+  server component fetches both with `cache: "no-store"`; API errors degrade to
+  an inline message rather than a 500. Added `app.enableCors({ origin: true,
+  credentials: true })` so the browser WS/handshake from `:3000` reaches `:3001`.
+- **AC verified end-to-end on a local stack** (Postgres.app + redis-server, no
+  Docker on this host): unauth `GET /` → 307 `/login`; wrong secret rejected with
+  no cookie; correct secret sets the cookie and `GET /` returns 200 with all 8
+  seeded strategies server-rendered; a real `socket.io-client` received repeated
+  `health` pushes 3s apart. `NEXT_PUBLIC_API_URL`/`API_URL` split the browser vs
+  server API base.

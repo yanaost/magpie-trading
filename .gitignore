@@ -27,3 +27,6 @@ pgdata/
 redisdata/
 ib-gateway-data/
 backups/
+
+# Redis dump created by a local dev redis-server
+dump.rdb

@@ -6,6 +6,7 @@ import { HealthModule } from "./health/health.module.js";
 import { QueueModule } from "./queue/queue.module.js";
 import { EventsModule } from "./ws/events.module.js";
 import { MarketDataModule } from "./market-data/market-data.module.js";
+import { DashboardModule } from "./dashboard/dashboard.module.js";
 
 /**
  * Root module. Order matters: config is global and loaded first; infra
@@ -29,6 +30,7 @@ import { MarketDataModule } from "./market-data/market-data.module.js";
     QueueModule,
     EventsModule,
     MarketDataModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}

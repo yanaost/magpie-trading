@@ -45,6 +45,9 @@ export const envSchema = z.object({
 
   /** Heartbeat interval for the Phase 0 demo job (ms). Default 30s per T0.4. */
   DEMO_JOB_INTERVAL_MS: z.coerce.number().int().positive().default(30_000),
+
+  /** Interval for pushing /healthz to dashboards over WS (ms). Default 5s. */
+  HEALTH_BROADCAST_MS: z.coerce.number().int().positive().default(5_000),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

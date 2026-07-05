@@ -12,6 +12,9 @@ import { loadConfig } from "./config/env.schema.js";
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
+  // The dashboard (apps/web) runs on a different origin and connects over WS.
+  app.enableCors({ origin: true, credentials: true });
+
   // Route Nest's logger through pino.
   app.useLogger(app.get(PinoLogger));
 

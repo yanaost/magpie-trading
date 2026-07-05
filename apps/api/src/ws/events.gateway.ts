@@ -29,4 +29,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitGatewayStatus(payload: unknown): void {
     this.server?.emit("gateway-status", payload);
   }
+
+  /** Broadcast a full /healthz report to all connected dashboards. */
+  emitHealth(payload: unknown): void {
+    this.server?.emit("health", payload);
+  }
 }
