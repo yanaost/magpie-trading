@@ -21,6 +21,21 @@ export const envSchema = z.object({
   IB_GATEWAY_HOST: z.string().default("localhost"),
   IB_GATEWAY_PORT: z.coerce.number().int().positive().default(4002),
   IB_ACCOUNT_ID: z.string().optional(),
+  /** TWS/Gateway API client id; unique per concurrent connection. */
+  IB_CLIENT_ID: z.coerce.number().int().nonnegative().default(10),
+
+  /** Whether to open a live IB connection + realtime subscriptions at boot. */
+  MARKET_DATA_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  /** Comma-separated tickers to stream/backfill. */
+  MARKET_DATA_TICKERS: z.string().default("QUAL,SPHB,SPY"),
+  /** Minimum spacing between IB historical requests (pacing guard), ms. */
+  IB_PACING_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
+  /** Reconnect backoff bounds, ms. */
+  IB_RECONNECT_BASE_MS: z.coerce.number().int().positive().default(1_000),
+  IB_RECONNECT_MAX_MS: z.coerce.number().int().positive().default(30_000),
 
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),

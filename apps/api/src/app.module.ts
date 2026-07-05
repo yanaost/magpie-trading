@@ -5,6 +5,7 @@ import { InfraModule } from "./infra/infra.module.js";
 import { HealthModule } from "./health/health.module.js";
 import { QueueModule } from "./queue/queue.module.js";
 import { EventsModule } from "./ws/events.module.js";
+import { MarketDataModule } from "./market-data/market-data.module.js";
 
 /**
  * Root module. Order matters: config is global and loaded first; infra
@@ -27,6 +28,7 @@ import { EventsModule } from "./ws/events.module.js";
     HealthModule,
     QueueModule,
     EventsModule,
+    MarketDataModule,
   ],
 })
 export class AppModule {}

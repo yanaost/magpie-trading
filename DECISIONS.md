@@ -98,3 +98,44 @@ rule 10). Newest at the bottom of each phase.
 - **Verified live**: booted the built app against local Postgres 17.6 + Redis;
   `/healthz` returned `db:up, redis:up, gateway:down` (nothing on 4002), and the
   heartbeat logged every tick. AC met.
+
+### T0.5 IB market data adapter
+
+- **Client:** `@stoqey/ib` 1.6.3. It ships CommonJS, so it is loaded from our
+  ESM code via `createRequire(import.meta.url)` in `ib-client-factory.ts` (the
+  standard ESM→CJS bridge) rather than a static import — construction is
+  deferred until a live connection is actually requested. Verified at runtime
+  that the factory constructs a real `IBApi` with `connect`/`reqHistoricalData`.
+- **Testability seam:** the adapter is split so the money-relevant logic is pure
+  and unit-tested without a gateway:
+  - `bar-parser.ts` — pure IB-bar → `CandleRow` mapping (dates, `-1` padding
+    and `finished-…` sentinel handling, numerics as strings). Proven by a
+    **recorded-fixture test** (T0.5 AC allows this off market hours).
+  - `pacing-queue.ts` — serialized, rate-limited request queue with exponential
+    backoff on IB pacing errors (codes 162/420 or "pacing" in the message).
+    Clock is injectable; tests are deterministic with a virtual clock.
+  - `ib-connection.ts` — connect/reconnect lifecycle with exponential backoff,
+    normalizing raw positional event args into structured events. The IBApi
+    factory + timers are injectable, so the **disconnect/reconnect test** runs
+    against a fake socket (T0.5 AC).
+- **Event arg order** taken from the installed decoder (not memory):
+  `historicalData(reqId,date,o,h,l,c,vol,barCount,WAP,hasGaps)` with a
+  `finished-…` end sentinel; `realtimeBar(reqId,time,o,h,l,c,vol,wap,count)`
+  where `time` is unix seconds. Historical requests use `formatDate=2`
+  (epoch seconds) for deterministic parsing.
+- **Timeframes:** daily stored as `1d`, 5-min as `5m`, realtime 5-second bars as
+  `5s` in `candles.timeframe` (free-text column). Daily backfill duration uses
+  `N D` (≤365) or `⌈N/365⌉ Y`; 5-min is bounded to ≤10 days per request to stay
+  within IB intraday history limits.
+- **Writes** use a single `INSERT … ON CONFLICT (ticker,timeframe,ts) DO UPDATE`
+  (idempotent re-backfill). Verified end-to-end against real Postgres: insert 3
+  rows, re-write stays at 3, a changed close upserts correctly.
+- **Backfill CLI:** `apps/api` script `ingest:backfill` (`--tickers`, `--days`),
+  runnable standalone (`new MarketDataService(...)`, no full Nest bootstrap).
+- **Live subscription** is gated by `MARKET_DATA_ENABLED` (default `false`) so
+  the API boots without a gateway; when enabled it subscribes realtime bars for
+  `MARKET_DATA_TICKERS` on connect and persists them.
+- **Live gateway verification deferred:** no IB paper gateway / Docker on this
+  host, so `ingest:backfill` against a live gateway and market-hours realtime
+  bars are deferred to an IB-connected host. The parsing, pacing, reconnect, and
+  DB-write paths are all covered by tests / real-Postgres checks per the AC.
