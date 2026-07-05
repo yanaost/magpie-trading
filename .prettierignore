@@ -1,0 +1,10 @@
+**/dist/**
+**/build/**
+**/.next/**
+**/coverage/**
+**/node_modules/**
+pnpm-lock.yaml
+
+# Provided source documents — kept verbatim, not reformatted
+ai-trading-app-spec.md
+TASKS.md

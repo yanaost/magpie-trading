@@ -1,0 +1,29 @@
+node_modules/
+dist/
+build/
+.next/
+coverage/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+logs/
+pnpm-debug.log*
+
+# os
+.DS_Store
+
+# editor
+.vscode/
+.idea/
+
+# db / infra local state
+pgdata/
+redisdata/
+ib-gateway-data/
+backups/
