@@ -75,7 +75,12 @@ describe("RiskManager.evaluate — happy path & sizing", () => {
 
   it("sizes a short correctly (stop above entry)", () => {
     const d = mgr.evaluate(
-      draft({ side: "short", entry: 100, stop: 102, exitPlan: { stopLoss: 102, rules: [] } }),
+      draft({
+        side: "short",
+        entry: 100,
+        stop: 102,
+        exitPlan: { stopLoss: 102, rules: [] },
+      }),
       ctx(),
     );
     expect(d.approved).toBe(true);
@@ -104,20 +109,32 @@ const REJECTIONS: RejectCase[] = [
   },
   {
     name: "stop on wrong side for a long",
-    draft: { side: "long", entry: 150, stop: 152, exitPlan: { stopLoss: 152, rules: [] } },
+    draft: {
+      side: "long",
+      entry: 150,
+      stop: 152,
+      exitPlan: { stopLoss: 152, rules: [] },
+    },
     rule: "invalid_stop",
     reasonMatch: /wrong side of entry/,
   },
   {
     name: "stop on wrong side for a short",
-    draft: { side: "short", entry: 150, stop: 148, exitPlan: { stopLoss: 148, rules: [] } },
+    draft: {
+      side: "short",
+      entry: 150,
+      stop: 148,
+      exitPlan: { stopLoss: 148, rules: [] },
+    },
     rule: "invalid_stop",
     reasonMatch: /wrong side of entry/,
   },
   {
     name: "averaging down into same ticker/side/strategy",
     ctx: {
-      openPositions: [pos({ strategyId: "qual-sphb", ticker: "QUAL", side: "long" })],
+      openPositions: [
+        pos({ strategyId: "qual-sphb", ticker: "QUAL", side: "long" }),
+      ],
     },
     // per-ticker cap would also fire, but averaging-down is checked first
     rule: "no_averaging_down",
@@ -154,7 +171,9 @@ const REJECTIONS: RejectCase[] = [
     name: "max positions per ticker across strategies",
     params: { maxPositionsPerStrategy: 5 },
     ctx: {
-      openPositions: [pos({ strategyId: "other", ticker: "QUAL", side: "short" })],
+      openPositions: [
+        pos({ strategyId: "other", ticker: "QUAL", side: "short" }),
+      ],
     },
     rule: "max_positions_per_ticker",
     reasonMatch: /Max positions in QUAL reached \(1\/1\)/,

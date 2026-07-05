@@ -21,11 +21,7 @@ function toneFor(state: string | undefined): string {
  * gateway/dependency status (T0.6 AC: "page reflects live /healthz over
  * WebSocket"). Falls back to a disconnected badge until the first push.
  */
-export default function LiveStatus({
-  apiUrl,
-}: {
-  apiUrl: string;
-}): ReactNode {
+export default function LiveStatus({ apiUrl }: { apiUrl: string }): ReactNode {
   const [socketUp, setSocketUp] = useState(false);
   const [health, setHealth] = useState<HealthReport | null>(null);
 

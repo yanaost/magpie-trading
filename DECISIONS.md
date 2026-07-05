@@ -174,7 +174,7 @@ rule 10). Newest at the bottom of each phase.
   `group by ticker, timeframe` — small integer counts) back the tables. The `/`
   server component fetches both with `cache: "no-store"`; API errors degrade to
   an inline message rather than a 500. Added `app.enableCors({ origin: true,
-  credentials: true })` so the browser WS/handshake from `:3000` reaches `:3001`.
+credentials: true })` so the browser WS/handshake from `:3000` reaches `:3001`.
 - **AC verified end-to-end on a local stack** (Postgres.app + redis-server, no
   Docker on this host): unauth `GET /` → 307 `/login`; wrong secret rejected with
   no cookie; correct secret sets the cookie and `GET /` returns 200 with all 8
@@ -197,7 +197,7 @@ rule 10). Newest at the bottom of each phase.
   behavioral contracts (`MarketContext`, `ExecutionPort`, `Strategy`) are plain
   TS interfaces with no schema — they are method surfaces, not serialized data.
 - **`ProposalDraft` vs `TradeProposal` split.** A strategy's `buildProposal`
-  returns a `ProposalDraft` carrying a *requested* qty only; the risk manager
+  returns a `ProposalDraft` carrying a _requested_ qty only; the risk manager
   (T1.2) owns sizing and produces the finalized `TradeProposal` with
   `riskUsd`/`riskPct`/`status`. This encodes the rule "the LLM/strategy never
   sets final size" in the type system, not just convention.
@@ -242,7 +242,7 @@ rule 10). Newest at the bottom of each phase.
   position caps → per-trade sizing → total open risk. First failing rule wins,
   giving one precise reason string per rejection.
 - **Sizing is whole-share, budget-bounded.** `qty = floor((equity ×
-  maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
+maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
   rejection (stop too wide). `riskUsd`/`riskPct` are stamped by the manager, so
   by construction an approved proposal is always within the per-trade budget.
 - **Rule codes are a stable contract.** `RISK_RULES` is a closed union persisted
@@ -250,7 +250,7 @@ rule 10). Newest at the bottom of each phase.
   table-driven tests so a wording change can't silently drift.
 - **Kill-switch trip lives here, action lives in T1.3.** `checkDailyLoss`
   compares day P&L% to `-dailyLossLimitPct` and, on breach, returns a `tripped`
-  result with a *critical* `daily_loss_limit` event. Trips exactly at −3%
+  result with a _critical_ `daily_loss_limit` event. Trips exactly at −3%
   (`≤ -limit`); the actual block-orders / all-strategies-→-WATCH / notify is the
   kill-switch service (T1.2 provides the trigger).
 - **Options guard is types-now.** `definedRiskOptionsOnly` is carried on
@@ -274,7 +274,7 @@ rule 10). Newest at the bottom of each phase.
   Drizzle/Redis implementations in prod and in-memory fakes in the test. This is
   what makes the AC's integration test run in CI with no live Postgres/Redis.
 - **Demotion is AUTO/APPROVE → WATCH only.** WATCH and OFF are left untouched —
-  the kill switch stops trading; it must never *wake* a disabled strategy. The
+  the kill switch stops trading; it must never _wake_ a disabled strategy. The
   pre-change mode is captured (select-then-update) so the audit `before` is real.
 - **Re-arm needs the exact typed phrase** `REARM_CONFIRMATION` ("RE-ARM
   TRADING") and, by design, does **not** restore strategy modes — re-enabling a
@@ -322,12 +322,12 @@ rule 10). Newest at the bottom of each phase.
   test: a closed bracket has exactly 2 fills — one entry, one exit). Gap-through
   is modeled: a long stop fills at `min(stop, bar.open)` (worse than the stop).
 - **Accounting balances to the cent.** Cash mutations and realized P&L are
-  computed from the *same* `roundCents`-rounded fill values, so when the book is
+  computed from the _same_ `roundCents`-rounded fill values, so when the book is
   flat `cash − startingCash === Σ realizedPnl` exactly — asserted over 1,000
   seeded random round-trips.
 - **No naked positions.** `modifyBracket` enforces downward-only qty (a reduction
   scales out the difference at market; an increase throws — no averaging up);
-  cancelling a *filled* bracket flattens the position at the current mark rather
+  cancelling a _filled_ bracket flattens the position at the current mark rather
   than leaving it unprotected.
 - **`resetPortfolio` returns a `PortfolioResetRecord`** (cash/realized before,
   open positions discarded, cash after, `resetAt`) for the caller to write to

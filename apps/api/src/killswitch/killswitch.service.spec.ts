@@ -110,9 +110,9 @@ describe("KillSwitchService integration (T1.3)", () => {
     repo = new FakeRepo();
     registry = new FakeRegistry({
       "qual-sphb": "APPROVE",
-      "momentum": "AUTO",
-      "pairs": "WATCH",
-      "snapback": "OFF",
+      momentum: "AUTO",
+      pairs: "WATCH",
+      snapback: "OFF",
     });
     audit = new FakeAudit();
     cache = new FakeCache();
@@ -132,7 +132,11 @@ describe("KillSwitchService integration (T1.3)", () => {
 
   describe("after trip", () => {
     beforeEach(async () => {
-      await svc.trip("daily loss limit breached", "system:daily_loss_limit", AT);
+      await svc.trip(
+        "daily loss limit breached",
+        "system:daily_loss_limit",
+        AT,
+      );
     });
 
     it("blocks a pending proposal from executing", async () => {
@@ -144,9 +148,9 @@ describe("KillSwitchService integration (T1.3)", () => {
     it("demotes AUTO/APPROVE strategies to WATCH, leaves WATCH/OFF alone", () => {
       expect(registry.modes).toEqual({
         "qual-sphb": "WATCH",
-        "momentum": "WATCH",
-        "pairs": "WATCH",
-        "snapback": "OFF",
+        momentum: "WATCH",
+        pairs: "WATCH",
+        snapback: "OFF",
       });
     });
 

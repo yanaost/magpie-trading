@@ -12,12 +12,9 @@ describe("TickerSchema", () => {
     expect(TickerSchema.parse(t)).toBe(t);
   });
 
-  it.each(["", "lower", "TOO-LONG-SYMBOL-X", "A B"])(
-    "rejects %p",
-    (t) => {
-      expect(() => TickerSchema.parse(t)).toThrow();
-    },
-  );
+  it.each(["", "lower", "TOO-LONG-SYMBOL-X", "A B"])("rejects %p", (t) => {
+    expect(() => TickerSchema.parse(t)).toThrow();
+  });
 });
 
 describe("CandleSchema", () => {

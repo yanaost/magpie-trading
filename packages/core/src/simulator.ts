@@ -106,9 +106,7 @@ export function marketFillPrice(
   slippageBps: number,
 ): number {
   const slip = bpsToFraction(slippageBps);
-  return action === "buy"
-    ? quote.ask * (1 + slip)
-    : quote.bid * (1 - slip);
+  return action === "buy" ? quote.ask * (1 + slip) : quote.bid * (1 - slip);
 }
 
 /** The broker action that opens or closes a given side. */
@@ -252,7 +250,8 @@ export class Simulator implements ExecutionPort {
       for (const b of p.brackets.values()) {
         if (b.status !== "open" || b.ticker !== bar.ticker) continue;
         const trigger = this.detectExit(b, bar);
-        if (trigger) this.closeBracket(p, b, trigger.leg, trigger.reference, bar.ts);
+        if (trigger)
+          this.closeBracket(p, b, trigger.leg, trigger.reference, bar.ts);
       }
     }
   }
@@ -301,7 +300,15 @@ export class Simulator implements ExecutionPort {
     b.status = "open";
     b.entryPrice = price;
     b.openedAt = ts;
-    this.recordFill(b.orderIds.parent, b.ticker, openAction(b.side) === "buy" ? "long" : "short", b.qty, price, commission, ts);
+    this.recordFill(
+      b.orderIds.parent,
+      b.ticker,
+      openAction(b.side) === "buy" ? "long" : "short",
+      b.qty,
+      price,
+      commission,
+      ts,
+    );
   }
 
   /** Close a full bracket via its stop or target leg (one-cancels-other). */
@@ -328,7 +335,11 @@ export class Simulator implements ExecutionPort {
       b.side === "long"
         ? roundCents(b.qty * (price - b.entryPrice!))
         : roundCents(b.qty * (b.entryPrice! - price));
-    const entryCommission = ibCommission(b.qty, b.entryPrice!, this.cfg.commission);
+    const entryCommission = ibCommission(
+      b.qty,
+      b.entryPrice!,
+      this.cfg.commission,
+    );
     const realized = roundCents(gross - entryCommission - commission);
     b.realizedPnl = realized;
     p.realizedPnl = roundCents(p.realizedPnl + realized);
@@ -431,7 +442,9 @@ export class Simulator implements ExecutionPort {
   async modifyBracket(mod: OrderModification): Promise<void> {
     const b = this.lookup(mod.bracketId);
     if (b.status !== "open" && b.status !== "pending") {
-      throw new Error(`Bracket ${mod.bracketId} is ${b.status}; cannot modify.`);
+      throw new Error(
+        `Bracket ${mod.bracketId} is ${b.status}; cannot modify.`,
+      );
     }
     if (mod.newStopPrice !== undefined) b.stopPrice = mod.newStopPrice;
     if (mod.newTargetPrice !== undefined) b.targetPrice = mod.newTargetPrice;
@@ -467,7 +480,11 @@ export class Simulator implements ExecutionPort {
       b.side === "long"
         ? roundCents(reduceBy * (price - b.entryPrice!))
         : roundCents(reduceBy * (b.entryPrice! - price));
-    const entryCommission = ibCommission(reduceBy, b.entryPrice!, this.cfg.commission);
+    const entryCommission = ibCommission(
+      reduceBy,
+      b.entryPrice!,
+      this.cfg.commission,
+    );
     const realized = roundCents(gross - entryCommission - commission);
     b.realizedPnl = roundCents(b.realizedPnl + realized);
     p.realizedPnl = roundCents(p.realizedPnl + realized);
@@ -511,7 +528,11 @@ export class Simulator implements ExecutionPort {
         b.side === "long"
           ? roundCents(b.qty * (price - b.entryPrice!))
           : roundCents(b.qty * (b.entryPrice! - price));
-      const entryCommission = ibCommission(b.qty, b.entryPrice!, this.cfg.commission);
+      const entryCommission = ibCommission(
+        b.qty,
+        b.entryPrice!,
+        this.cfg.commission,
+      );
       const realized = roundCents(gross - entryCommission - commission);
       b.realizedPnl = realized;
       p.realizedPnl = roundCents(p.realizedPnl + realized);
@@ -561,7 +582,9 @@ export class Simulator implements ExecutionPort {
    */
   resetPortfolio(strategyInstanceId: string, at: Date): PortfolioResetRecord {
     const p = this.portfolioFor(strategyInstanceId);
-    const open = [...p.brackets.values()].filter((b) => b.status === "open").length;
+    const open = [...p.brackets.values()].filter(
+      (b) => b.status === "open",
+    ).length;
     const record: PortfolioResetRecord = {
       strategyInstanceId,
       cashBefore: p.cash,

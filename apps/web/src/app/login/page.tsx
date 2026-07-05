@@ -26,7 +26,9 @@ export default async function LoginPage({
             autoFocus
             required
           />
-          {error ? <div className="error">Invalid secret. Try again.</div> : null}
+          {error ? (
+            <div className="error">Invalid secret. Try again.</div>
+          ) : null}
           <button type="submit">Sign in</button>
         </form>
       </div>

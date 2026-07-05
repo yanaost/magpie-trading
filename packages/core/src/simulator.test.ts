@@ -85,9 +85,9 @@ describe("fill model (pure)", () => {
 describe("bracket lifecycle", () => {
   it("throws LivePromotionLockedError for a LIVE target", async () => {
     const sim = new Simulator();
-    await expect(sim.placeBracket(longReq({ target: "LIVE" }))).rejects.toBeInstanceOf(
-      LivePromotionLockedError,
-    );
+    await expect(
+      sim.placeBracket(longReq({ target: "LIVE" })),
+    ).rejects.toBeInstanceOf(LivePromotionLockedError);
   });
 
   it("fills a market entry immediately when a quote exists", async () => {
@@ -142,7 +142,9 @@ describe("bracket lifecycle", () => {
   it("shorts fill and stop out symmetrically", async () => {
     const sim = new Simulator();
     sim.onBar(bar("QUAL", { close: 100 }, 0));
-    await sim.placeBracket(longReq({ side: "short", stopPrice: 105, targetPrice: 90 }));
+    await sim.placeBracket(
+      longReq({ side: "short", stopPrice: 105, targetPrice: 90 }),
+    );
     sim.onBar(bar("QUAL", { open: 100, high: 106, low: 99, close: 104 }, 5));
     expect(await sim.getPositions()).toHaveLength(0);
     expect(sim.realizedPnl("qual-sphb")).toBeLessThan(0); // stopped for a loss
@@ -261,9 +263,13 @@ describe("AC: accounting balances to the cent across 1,000 random trades", () =>
       const stopDist = roundCents(0.5 + rand() * 4);
       const tgtDist = roundCents(0.5 + rand() * 6);
       const stopPrice =
-        side === "long" ? roundCents(entry - stopDist) : roundCents(entry + stopDist);
+        side === "long"
+          ? roundCents(entry - stopDist)
+          : roundCents(entry + stopDist);
       const targetPrice =
-        side === "long" ? roundCents(entry + tgtDist) : roundCents(entry - tgtDist);
+        side === "long"
+          ? roundCents(entry + tgtDist)
+          : roundCents(entry - tgtDist);
       const qty = 1 + Math.floor(rand() * 200);
 
       // Seed a quote at the entry so the market order fills, then place.
@@ -307,12 +313,18 @@ describe("AC: property — a bracket closes on exactly one leg, never both", () 
       const stopDist = roundCents(0.5 + rand() * 3);
       const tgtDist = roundCents(0.5 + rand() * 3);
       const stopPrice =
-        side === "long" ? roundCents(entry - stopDist) : roundCents(entry + stopDist);
+        side === "long"
+          ? roundCents(entry - stopDist)
+          : roundCents(entry + stopDist);
       const targetPrice =
-        side === "long" ? roundCents(entry + tgtDist) : roundCents(entry - tgtDist);
+        side === "long"
+          ? roundCents(entry + tgtDist)
+          : roundCents(entry - tgtDist);
 
       sim.onBar(bar("QUAL", { close: entry }, 0));
-      await sim.placeBracket(longReq({ side, qty: 10, stopPrice, targetPrice }));
+      await sim.placeBracket(
+        longReq({ side, qty: 10, stopPrice, targetPrice }),
+      );
 
       // Random walk until the bracket closes (bounded).
       let price = entry;

@@ -146,11 +146,7 @@
       "compositePrimaryKeys": {
         "candles_ticker_timeframe_ts_pk": {
           "name": "candles_ticker_timeframe_ts_pk",
-          "columns": [
-            "ticker",
-            "timeframe",
-            "ts"
-          ]
+          "columns": ["ticker", "timeframe", "ts"]
         }
       },
       "uniqueConstraints": {},
@@ -317,12 +313,8 @@
           "name": "fills_order_id_orders_id_fk",
           "tableFrom": "fills",
           "tableTo": "orders",
-          "columnsFrom": [
-            "order_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -417,12 +409,8 @@
           "name": "journal_entries_strategy_id_strategies_id_fk",
           "tableFrom": "journal_entries",
           "tableTo": "strategies",
-          "columnsFrom": [
-            "strategy_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["strategy_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -581,12 +569,8 @@
           "name": "llm_analyses_signal_id_signals_id_fk",
           "tableFrom": "llm_analyses",
           "tableTo": "signals",
-          "columnsFrom": [
-            "signal_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["signal_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -770,12 +754,8 @@
           "name": "orders_proposal_id_proposals_id_fk",
           "tableFrom": "orders",
           "tableTo": "proposals",
-          "columnsFrom": [
-            "proposal_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["proposal_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -783,12 +763,8 @@
           "name": "orders_strategy_id_strategies_id_fk",
           "tableFrom": "orders",
           "tableTo": "strategies",
-          "columnsFrom": [
-            "strategy_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["strategy_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -967,12 +943,8 @@
           "name": "positions_strategy_id_strategies_id_fk",
           "tableFrom": "positions",
           "tableTo": "strategies",
-          "columnsFrom": [
-            "strategy_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["strategy_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -980,12 +952,8 @@
           "name": "positions_sim_portfolio_id_sim_portfolios_id_fk",
           "tableFrom": "positions",
           "tableTo": "sim_portfolios",
-          "columnsFrom": [
-            "sim_portfolio_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sim_portfolio_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1153,12 +1121,8 @@
           "name": "proposals_signal_id_signals_id_fk",
           "tableFrom": "proposals",
           "tableTo": "signals",
-          "columnsFrom": [
-            "signal_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["signal_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1166,12 +1130,8 @@
           "name": "proposals_strategy_id_strategies_id_fk",
           "tableFrom": "proposals",
           "tableTo": "strategies",
-          "columnsFrom": [
-            "strategy_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["strategy_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1261,12 +1221,8 @@
           "name": "risk_events_strategy_id_strategies_id_fk",
           "tableFrom": "risk_events",
           "tableTo": "strategies",
-          "columnsFrom": [
-            "strategy_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["strategy_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1274,12 +1230,8 @@
           "name": "risk_events_proposal_id_proposals_id_fk",
           "tableFrom": "risk_events",
           "tableTo": "proposals",
-          "columnsFrom": [
-            "proposal_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["proposal_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1371,12 +1323,8 @@
           "name": "signals_strategy_id_strategies_id_fk",
           "tableFrom": "signals",
           "tableTo": "strategies",
-          "columnsFrom": [
-            "strategy_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["strategy_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1533,37 +1481,22 @@
     "public.bracket_role": {
       "name": "bracket_role",
       "schema": "public",
-      "values": [
-        "parent",
-        "stop",
-        "target"
-      ]
+      "values": ["parent", "stop", "target"]
     },
     "public.decided_by": {
       "name": "decided_by",
       "schema": "public",
-      "values": [
-        "user",
-        "auto"
-      ]
+      "values": ["user", "auto"]
     },
     "public.journal_entry_type": {
       "name": "journal_entry_type",
       "schema": "public",
-      "values": [
-        "decision",
-        "note"
-      ]
+      "values": ["decision", "note"]
     },
     "public.mode": {
       "name": "mode",
       "schema": "public",
-      "values": [
-        "AUTO",
-        "APPROVE",
-        "WATCH",
-        "OFF"
-      ]
+      "values": ["AUTO", "APPROVE", "WATCH", "OFF"]
     },
     "public.order_status": {
       "name": "order_status",
@@ -1581,66 +1514,37 @@
     "public.position_status": {
       "name": "position_status",
       "schema": "public",
-      "values": [
-        "open",
-        "closed"
-      ]
+      "values": ["open", "closed"]
     },
     "public.proposal_status": {
       "name": "proposal_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "approved",
-        "rejected",
-        "expired",
-        "executed"
-      ]
+      "values": ["pending", "approved", "rejected", "expired", "executed"]
     },
     "public.severity": {
       "name": "severity",
       "schema": "public",
-      "values": [
-        "info",
-        "warning",
-        "critical"
-      ]
+      "values": ["info", "warning", "critical"]
     },
     "public.side": {
       "name": "side",
       "schema": "public",
-      "values": [
-        "long",
-        "short"
-      ]
+      "values": ["long", "short"]
     },
     "public.execution_target": {
       "name": "execution_target",
       "schema": "public",
-      "values": [
-        "SIM",
-        "PAPER",
-        "LIVE"
-      ]
+      "values": ["SIM", "PAPER", "LIVE"]
     },
     "public.timeframe": {
       "name": "timeframe",
       "schema": "public",
-      "values": [
-        "intraday",
-        "swing",
-        "weekly",
-        "observation",
-        "filter"
-      ]
+      "values": ["intraday", "swing", "weekly", "observation", "filter"]
     },
     "public.verdict": {
       "name": "verdict",
       "schema": "public",
-      "values": [
-        "proceed",
-        "veto"
-      ]
+      "values": ["proceed", "veto"]
     }
   },
   "schemas": {},

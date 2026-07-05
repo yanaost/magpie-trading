@@ -6,7 +6,11 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { Redis } from "ioredis";
 import { schema, eq, inArray } from "@magpie/db";
-import { DB_CLIENT, REDIS_CLIENT, type DbClient } from "../infra/infra.module.js";
+import {
+  DB_CLIENT,
+  REDIS_CLIENT,
+  type DbClient,
+} from "../infra/infra.module.js";
 import {
   type AuditEntry,
   type AuditSink,
