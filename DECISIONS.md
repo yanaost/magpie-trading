@@ -46,3 +46,29 @@ rule 10). Newest at the bottom of each phase.
   so `docker compose up` healthy-state verification is deferred to a Docker-
   capable host. Compose structure validated statically (5 services; gateway
   internal-only; api→4004).
+
+### T0.3 database schema + migrations
+
+- **New package `packages/db`** (beyond the structure sketch in TASKS) holds the
+  Drizzle schema, client, and migrate/seed scripts. Rationale: both the API and
+  standalone CLI scripts (migrations, the T0.5 ingestion backfill) need DB
+  access outside the NestJS process, so the data layer is its own package rather
+  than living inside `apps/api`.
+- **Driver:** `postgres` (postgres.js) + `drizzle-orm`; `drizzle-kit` for
+  migration generation. Numeric columns come back as strings (precision-safe);
+  the app converts deliberately, never the LLM.
+- **`timeframe` enum is a superset** of spec §3.1's `intraday|swing|weekly` —
+  adds `observation` (strategy #8) and `filter` (strategy #6) so the whole
+  roster fits one column. Core types (T1.1) will match this superset.
+- **Hypertable conversion runs in `migrate.ts` as a guarded post-step**, not a
+  versioned SQL migration: it creates the extension + `create_hypertable` only
+  when `timescaledb` is available, else logs a NOTICE and leaves `candles` a
+  plain table. This makes `db:migrate` succeed on plain Postgres (local dev)
+  and produce a real hypertable on the Timescale image. Idempotent.
+- **Seed is idempotent** via `onConflictDoNothing` on `strategies.id` — never
+  clobbers a mode/target the user has changed. Roster extracted to
+  `seed-data.ts` so it is unit-testable without a DB.
+- **Verified against a real Postgres 17.6** (throwaway local cluster): migrate
+  from zero → 13 tables; seed → 8 strategies all `WATCH`/`SIM`; candles PK =
+  `(ticker, timeframe, ts)`; re-seed inserts 0. Hypertable creation itself is
+  verified on the Timescale Docker image (deferred, extension absent locally).

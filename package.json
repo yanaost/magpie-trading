@@ -13,7 +13,10 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @trading-app/db db:generate",
+    "db:migrate": "pnpm --filter @trading-app/db db:migrate",
+    "db:seed": "pnpm --filter @trading-app/db db:seed"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
