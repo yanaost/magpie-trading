@@ -32,7 +32,7 @@ export default async function Dashboard(): Promise<ReactNode> {
     <main>
       <div className="row">
         <div>
-          <h1>AI Trading Dashboard</h1>
+          <h1>Magpie Trading Dashboard</h1>
           <p className="muted">Single-user control surface · Phase 0</p>
         </div>
         <form method="post" action="/api/logout">

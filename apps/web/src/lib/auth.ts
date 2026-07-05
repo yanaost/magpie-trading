@@ -10,7 +10,7 @@ import { redirect } from "next/navigation";
  */
 
 export const SESSION_COOKIE = "trading_session";
-const SESSION_PAYLOAD = "trading-app-session-v1";
+const SESSION_PAYLOAD = "magpie-trading-session-v1";
 
 function secret(): string {
   const value = process.env.APP_AUTH_SECRET;

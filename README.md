@@ -1,4 +1,4 @@
-# trading-app
+# magpie-trading
 
 Personal AI trading app — a self-hosted portfolio of pluggable trading
 strategies running against an Interactive Brokers account, with a built-in

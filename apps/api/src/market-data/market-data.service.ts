@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import type { OnModuleDestroy, OnModuleInit } from "@nestjs/common";
-import { schema, sql } from "@trading-app/db";
+import { schema, sql } from "@magpie/db";
 import { APP_CONFIG, type AppConfig } from "../config/env.schema.js";
 import { DB_CLIENT, type DbClient } from "../infra/infra.module.js";
 import { parseHistoricalBar, parseRealtimeBar } from "./bar-parser.js";

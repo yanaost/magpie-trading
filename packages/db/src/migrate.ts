@@ -3,7 +3,7 @@
  * then runs idempotent post-migration steps (the TimescaleDB hypertable
  * conversion, which degrades to a plain table when the extension is absent).
  *
- * Usage: `DATABASE_URL=... pnpm --filter @trading-app/db db:migrate`
+ * Usage: `DATABASE_URL=... pnpm --filter @magpie/db db:migrate`
  */
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";

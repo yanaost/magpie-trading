@@ -5,7 +5,7 @@
  * gates. Idempotent: existing rows are left untouched (never clobbers live
  * mode/target the user has changed). Roster lives in `seed-data.ts`.
  *
- * Usage: `DATABASE_URL=... pnpm --filter @trading-app/db db:seed`
+ * Usage: `DATABASE_URL=... pnpm --filter @magpie/db db:seed`
  */
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";

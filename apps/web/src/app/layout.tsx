@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Trading — Dashboard",
+  title: "Magpie Trading — Dashboard",
   description: "Single-user control dashboard",
 };
 

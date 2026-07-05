@@ -15,7 +15,7 @@ export default async function LoginPage({
   return (
     <div className="login-wrap">
       <div className="panel login-card">
-        <h1>AI Trading</h1>
+        <h1>Magpie Trading</h1>
         <p className="muted">Enter the access secret to continue.</p>
         <form method="post" action="/api/login">
           <input

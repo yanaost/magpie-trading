@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { Socket } from "node:net";
 import { Redis } from "ioredis";
-import { sql } from "@trading-app/db";
+import { sql } from "@magpie/db";
 import { APP_CONFIG, type AppConfig } from "../config/env.schema.js";
 import {
   DB_CLIENT,

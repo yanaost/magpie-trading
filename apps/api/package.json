@@ -1,5 +1,5 @@
 {
-  "name": "@trading-app/api",
+  "name": "@magpie/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -21,8 +21,8 @@
     "@nestjs/platform-socket.io": "^10.4.15",
     "@nestjs/websockets": "^10.4.15",
     "@stoqey/ib": "^1.6.3",
-    "@trading-app/core": "workspace:*",
-    "@trading-app/db": "workspace:*",
+    "@magpie/core": "workspace:*",
+    "@magpie/db": "workspace:*",
     "bullmq": "^5.34.6",
     "dotenv": "^16.4.7",
     "ioredis": "^5.4.2",

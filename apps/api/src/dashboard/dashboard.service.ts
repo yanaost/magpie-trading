@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { schema } from "@trading-app/db";
+import { schema } from "@magpie/db";
 import { DB_CLIENT, type DbClient } from "../infra/infra.module.js";
 
 export interface StrategySummary {

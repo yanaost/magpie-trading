@@ -1,5 +1,5 @@
 /**
- * @trading-app/core — shared domain types and deterministic money-path logic.
+ * @magpie/core — shared domain types and deterministic money-path logic.
  *
  * This package is the single source of truth for domain types (never
  * duplicated elsewhere) and for the sacred money-path modules: the risk

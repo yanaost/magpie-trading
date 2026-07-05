@@ -6,7 +6,7 @@ import {
   type OnModuleDestroy,
 } from "@nestjs/common";
 import { Redis } from "ioredis";
-import { createDb, type Database } from "@trading-app/db";
+import { createDb, type Database } from "@magpie/db";
 import { APP_CONFIG, type AppConfig } from "../config/env.schema.js";
 
 /** DI token for the drizzle {@link Database} + its raw postgres client. */

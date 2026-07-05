@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { createDb } from "@trading-app/db";
+import { createDb } from "@magpie/db";
 import { loadConfig } from "../config/env.schema.js";
 import { MarketDataService } from "../market-data/market-data.service.js";
 import type { DbClient } from "../infra/infra.module.js";
@@ -7,7 +7,7 @@ import type { DbClient } from "../infra/infra.module.js";
 /**
  * Standalone historical backfill CLI.
  *
- *   pnpm --filter @trading-app/api ingest:backfill --tickers QUAL,SPHB,SPY --days 400
+ *   pnpm --filter @magpie/api ingest:backfill --tickers QUAL,SPHB,SPY --days 400
  *
  * Connects to the IB gateway, requests daily + 5-minute candles for each ticker
  * (rate-limited to respect IB pacing), upserts them into `candles`, and exits.
