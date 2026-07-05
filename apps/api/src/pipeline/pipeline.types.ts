@@ -9,6 +9,7 @@
  */
 import type {
   AnalysisRequest,
+  DecidedBy,
   ExecutionPort,
   ExecutionTarget,
   LLMAnalysis,
@@ -78,10 +79,29 @@ export interface PendingProposal {
   readonly snapshot: Record<string, unknown>;
 }
 
+/** A persisted proposal with its id guaranteed present (as read back). */
+export type StoredProposal = TradeProposal & { id: string };
+
 /** Persists proposals and drives their lifecycle transitions. */
 export interface ProposalStore {
   persist(proposal: TradeProposal): Promise<{ id: string }>;
-  markExecuted(id: string, at: Date): Promise<void>;
+  /**
+   * Mark a proposal executed. `decidedBy` records whether AUTO mode or a human
+   * approval drove it; `finalQty`, when given, records the (downward-adjusted)
+   * approved size onto the row.
+   */
+  markExecuted(
+    id: string,
+    at: Date,
+    decidedBy?: DecidedBy,
+    finalQty?: number,
+  ): Promise<void>;
+  /** Mark a pending proposal rejected by a human (guarded on `pending`). */
+  reject(id: string, at: Date): Promise<void>;
+  /** Load one proposal by id, or `null` when it does not exist. */
+  get(id: string): Promise<StoredProposal | null>;
+  /** Full pending proposals for the approval surface (REST/Telegram/WS). */
+  listPendingDetailed(): Promise<StoredProposal[]>;
   listPending(): Promise<PendingProposal[]>;
   expire(id: string, at: Date): Promise<void>;
 }

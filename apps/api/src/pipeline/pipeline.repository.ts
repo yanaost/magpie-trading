@@ -26,9 +26,44 @@ import type {
   ProposalStore,
   RiskEventStore,
   SignalStore,
+  StoredProposal,
   StrategyRegistry,
   StrategyRuntime,
 } from "./pipeline.types.js";
+import type {
+  DecidedBy,
+  ExitPlan,
+  Side,
+  Ticker,
+  ExecutionTarget,
+} from "@magpie/core";
+
+/** A `proposals` table row as read by Drizzle (string-mode numerics). */
+type ProposalRow = typeof schema.proposals.$inferSelect;
+
+/** Map a DB row to a domain {@link StoredProposal} (numeric strings → numbers). */
+function rowToStoredProposal(r: ProposalRow): StoredProposal {
+  return {
+    id: r.id,
+    signalId: r.signalId,
+    strategyId: r.strategyId,
+    ticker: r.ticker as Ticker,
+    side: r.side as Side,
+    qty: Number(r.qty),
+    entry: Number(r.entry),
+    stop: Number(r.stop),
+    target: r.target === null ? undefined : Number(r.target),
+    exitPlan: r.exitPlan as unknown as ExitPlan,
+    riskUsd: Number(r.riskUsd),
+    riskPct: Number(r.riskPct),
+    status: r.status,
+    executionTarget: r.executionTarget as ExecutionTarget,
+    decidedBy: r.decidedBy ?? undefined,
+    decidedAt: r.decidedAt ?? undefined,
+    expiry: r.expiry,
+    createdAt: r.createdAt,
+  };
+}
 
 /** Persists quant signals. */
 @Injectable()
@@ -81,11 +116,57 @@ export class DrizzleProposalStore implements ProposalStore {
     return { id: row.id };
   }
 
-  async markExecuted(id: string, at: Date): Promise<void> {
+  async markExecuted(
+    id: string,
+    at: Date,
+    decidedBy: DecidedBy = "auto",
+    finalQty?: number,
+  ): Promise<void> {
+    const set: Record<string, unknown> = {
+      status: "executed",
+      decidedBy,
+      decidedAt: at,
+    };
+    if (finalQty !== undefined) set.qty = finalQty.toString();
     await this.dbClient.db
       .update(schema.proposals)
-      .set({ status: "executed", decidedBy: "auto", decidedAt: at })
-      .where(eq(schema.proposals.id, id));
+      .set(set)
+      // Guarded on pending so an approval can't double-execute an expired/rejected row.
+      .where(
+        and(
+          eq(schema.proposals.id, id),
+          eq(schema.proposals.status, "pending"),
+        ),
+      );
+  }
+
+  async reject(id: string, at: Date): Promise<void> {
+    await this.dbClient.db
+      .update(schema.proposals)
+      .set({ status: "rejected", decidedBy: "user", decidedAt: at })
+      .where(
+        and(
+          eq(schema.proposals.id, id),
+          eq(schema.proposals.status, "pending"),
+        ),
+      );
+  }
+
+  async get(id: string): Promise<StoredProposal | null> {
+    const [r] = await this.dbClient.db
+      .select()
+      .from(schema.proposals)
+      .where(eq(schema.proposals.id, id))
+      .limit(1);
+    return r ? rowToStoredProposal(r) : null;
+  }
+
+  async listPendingDetailed(): Promise<StoredProposal[]> {
+    const rows = await this.dbClient.db
+      .select()
+      .from(schema.proposals)
+      .where(eq(schema.proposals.status, "pending"));
+    return rows.map(rowToStoredProposal);
   }
 
   async listPending(): Promise<PendingProposal[]> {

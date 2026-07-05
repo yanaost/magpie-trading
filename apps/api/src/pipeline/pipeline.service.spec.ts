@@ -13,6 +13,7 @@ import {
   type BracketHandle,
   type BracketOrderRequest,
   type Candle,
+  type DecidedBy,
   type ExecutionPort,
   type ExecutionTarget,
   type ExitAction,
@@ -22,6 +23,7 @@ import {
   type OrderModification,
   type Position,
   type ProposalDraft,
+  type ProposalStatus,
   type QuantSignal,
   type Quote,
   type RiskEvent,
@@ -30,7 +32,7 @@ import {
   type TradeProposal,
 } from "@magpie/core";
 import { InMemoryBracketIndex } from "./bracket-index.js";
-import { PipelineService } from "./pipeline.service.js";
+import { PipelineService, ProposalDecisionError } from "./pipeline.service.js";
 import type {
   JournalEntry,
   LlmAnalyst,
@@ -41,6 +43,7 @@ import type {
   ProposalStore,
   RiskEventStore,
   SignalStore,
+  StoredProposal,
   StrategyRegistry,
   StrategyRuntime,
 } from "./pipeline.types.js";
@@ -118,21 +121,57 @@ class FakeProposalStore implements ProposalStore {
   seq = 0;
   readonly persisted = new Map<string, TradeProposal>();
   readonly executed: string[] = [];
+  readonly rejected: string[] = [];
   readonly expired: string[] = [];
+  readonly executedQty = new Map<string, number>();
+  readonly executedBy = new Map<string, DecidedBy>();
+  private isPending(id: string): boolean {
+    return (
+      this.persisted.has(id) &&
+      !this.executed.includes(id) &&
+      !this.rejected.includes(id) &&
+      !this.expired.includes(id)
+    );
+  }
+  private status(id: string): ProposalStatus {
+    if (this.executed.includes(id)) return "executed";
+    if (this.rejected.includes(id)) return "rejected";
+    if (this.expired.includes(id)) return "expired";
+    return "pending";
+  }
   async persist(proposal: TradeProposal): Promise<{ id: string }> {
     this.seq += 1;
     const id = `prop-${this.seq}`;
     this.persisted.set(id, proposal);
     return { id };
   }
-  async markExecuted(id: string): Promise<void> {
+  async markExecuted(
+    id: string,
+    _at: Date,
+    decidedBy: DecidedBy = "auto",
+    finalQty?: number,
+  ): Promise<void> {
+    if (!this.isPending(id)) return; // guarded on pending, like the DB impl
     this.executed.push(id);
+    this.executedBy.set(id, decidedBy);
+    if (finalQty !== undefined) this.executedQty.set(id, finalQty);
+  }
+  async reject(id: string): Promise<void> {
+    if (!this.isPending(id)) return;
+    this.rejected.push(id);
+  }
+  async get(id: string): Promise<StoredProposal | null> {
+    const p = this.persisted.get(id);
+    return p ? { ...p, id, status: this.status(id) } : null;
+  }
+  async listPendingDetailed(): Promise<StoredProposal[]> {
+    return [...this.persisted.entries()]
+      .filter(([id]) => this.isPending(id))
+      .map(([id, p]) => ({ ...p, id, status: "pending" as ProposalStatus }));
   }
   async listPending(): Promise<PendingProposal[]> {
     return [...this.persisted.entries()]
-      .filter(
-        ([id]) => !this.executed.includes(id) && !this.expired.includes(id),
-      )
+      .filter(([id]) => this.isPending(id))
       .map(([id, p]) => ({
         id,
         strategyId: p.strategyId,
@@ -483,5 +522,97 @@ describe("PipelineService — TTL expiry sweep", () => {
         (e) => e.action === "expire" && e.entityId === proposalId,
       ),
     ).toBe(true);
+  });
+});
+
+describe("PipelineService — proposal decisions (T1.8)", () => {
+  /** Run an APPROVE scan to create one pending proposal, return its id + harness. */
+  async function pending() {
+    const h = build({ mode: "APPROVE" });
+    await h.service.runScan("qual-sphb");
+    const id = [...h.proposals.persisted.keys()][0]!;
+    return { h, id };
+  }
+
+  it("approve executes the SIM bracket, records it, and marks executed by user", async () => {
+    const { h, id } = await pending();
+    const outcome = await h.service.decideProposal(id, "approve");
+
+    expect(outcome.kind).toBe("executed");
+    if (outcome.kind !== "executed") throw new Error("expected executed");
+    // A bracket was placed on the SIM port and indexed for the monitor.
+    expect(h.port.placed).toHaveLength(1);
+    expect(h.port.placed[0]).toMatchObject({
+      ticker: "QUAL",
+      entryType: "market",
+    });
+    expect(h.brackets.resolve("qual-sphb", "QUAL")).toBe(outcome.bracketId);
+    // Proposal is executed, attributed to the human approver.
+    expect(h.proposals.executed).toContain(id);
+    expect(h.proposals.executedBy.get(id)).toBe("user");
+    expect(h.audit.entries.some((e) => e.action === "approve_execute")).toBe(
+      true,
+    );
+  });
+
+  it("approve with a downward qty reduces the executed size", async () => {
+    const { h, id } = await pending();
+    const proposed = h.proposals.persisted.get(id)!.qty;
+    const smaller = Math.max(1, Math.floor(proposed / 2));
+
+    const outcome = await h.service.decideProposal(id, "approve", {
+      qty: smaller,
+    });
+
+    expect(outcome.kind).toBe("executed");
+    if (outcome.kind !== "executed") throw new Error("expected executed");
+    expect(outcome.qty).toBe(smaller);
+    expect(h.port.placed[0]!.qty).toBe(smaller);
+    expect(h.proposals.executedQty.get(id)).toBe(smaller);
+  });
+
+  it("rejects an upward qty change (size can only be reduced)", async () => {
+    const { h, id } = await pending();
+    const proposed = h.proposals.persisted.get(id)!.qty;
+
+    await expect(
+      h.service.decideProposal(id, "approve", { qty: proposed + 1 }),
+    ).rejects.toBeInstanceOf(ProposalDecisionError);
+    // No order placed, proposal still pending.
+    expect(h.port.placed).toHaveLength(0);
+    expect(h.proposals.executed).toHaveLength(0);
+  });
+
+  it("reject marks the proposal rejected without placing an order", async () => {
+    const { h, id } = await pending();
+    const outcome = await h.service.decideProposal(id, "reject");
+
+    expect(outcome.kind).toBe("rejected");
+    expect(h.port.placed).toHaveLength(0);
+    expect(h.proposals.rejected).toContain(id);
+    expect(h.audit.entries.some((e) => e.action === "reject")).toBe(true);
+  });
+
+  it("returns not-found for an unknown id and not-pending after a decision", async () => {
+    const { h, id } = await pending();
+    expect(await h.service.decideProposal("nope", "approve")).toMatchObject({
+      kind: "not-found",
+    });
+
+    await h.service.decideProposal(id, "approve"); // now executed
+    const second = await h.service.decideProposal(id, "approve");
+    expect(second).toMatchObject({ kind: "not-pending", status: "executed" });
+    // The second approve did not place a duplicate order.
+    expect(h.port.placed).toHaveLength(1);
+  });
+
+  it("listPendingProposals returns pending proposals in full detail", async () => {
+    const { h, id } = await pending();
+    const list = await h.service.listPendingProposals();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id, ticker: "QUAL", status: "pending" });
+
+    await h.service.decideProposal(id, "reject");
+    expect(await h.service.listPendingProposals()).toHaveLength(0);
   });
 });

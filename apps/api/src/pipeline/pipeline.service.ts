@@ -16,10 +16,15 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import type {
   BracketOrderRequest,
+  DecidedBy,
+  ExecutionTarget,
   ExitAction,
   MarketContext,
   Position,
+  ProposalStatus,
   QuantSignal,
+  Side,
+  Ticker,
   TradeProposal,
 } from "@magpie/core";
 import {
@@ -62,6 +67,35 @@ export type SignalOutcome =
   | { kind: "executed"; ticker: string; proposalId: string; bracketId: string }
   | { kind: "proposed"; ticker: string; proposalId: string }
   | { kind: "watched"; ticker: string };
+
+/** The outcome of a human approve/reject decision on a pending proposal (T1.8). */
+export type ProposalDecisionOutcome =
+  | {
+      kind: "executed";
+      id: string;
+      ticker: string;
+      qty: number;
+      bracketId: string;
+    }
+  | { kind: "rejected"; id: string; ticker: string }
+  | { kind: "not-found"; id: string }
+  | { kind: "not-pending"; id: string; status: ProposalStatus };
+
+/** Thrown on an invalid approval (e.g. an upward size change). Maps to HTTP 400. */
+export class ProposalDecisionError extends Error {}
+
+/** The minimum a persisted proposal must expose to place its bracket. */
+interface BracketableProposal {
+  id: string;
+  strategyId: string;
+  ticker: Ticker;
+  side: Side;
+  qty: number;
+  stop: number;
+  target?: number;
+  executionTarget: ExecutionTarget;
+  riskUsd: number;
+}
 
 @Injectable()
 export class PipelineService {
@@ -232,52 +266,163 @@ export class PipelineService {
     now: Date,
   ): Promise<SignalOutcome> {
     const { id } = await this.proposals.persist(proposal);
-    const port = this.execPorts.portFor(runtime.executionTarget);
-    const request: BracketOrderRequest = {
-      strategyId: proposal.strategyId,
-      proposalId: id,
-      target: runtime.executionTarget,
-      ticker: proposal.ticker,
-      side: proposal.side,
-      qty: proposal.qty,
-      entryType: "market",
-      stopPrice: proposal.stop,
-      targetPrice: proposal.target,
-      timeInForce: "DAY",
-    };
-    const handle = await port.placeBracket(request);
-    this.brackets.record(
-      proposal.strategyId,
-      proposal.ticker,
-      handle.bracketId,
-    );
-    await this.proposals.markExecuted(id, now);
-    await this.audit.append({
-      entityType: "proposal",
-      entityId: id,
-      action: "auto_execute",
-      actor: proposal.strategyId,
-      after: {
-        bracketId: handle.bracketId,
+    const { bracketId } = await this.placeBracketAndRecord(
+      {
+        id,
+        strategyId: proposal.strategyId,
+        ticker: proposal.ticker,
+        side: proposal.side,
         qty: proposal.qty,
         stop: proposal.stop,
-        target: proposal.target ?? null,
+        target: proposal.target,
+        executionTarget: runtime.executionTarget,
+        riskUsd: proposal.riskUsd,
       },
-    });
-    await this.journal.append({
-      strategyId: runtime.strategy.id,
-      entryType: "decision",
-      refType: "proposal",
-      refId: id,
-      title: `AUTO executed ${proposal.side} ${proposal.qty} ${proposal.ticker}`,
-      meta: { bracketId: handle.bracketId, riskUsd: proposal.riskUsd },
-    });
+      now,
+      "auto",
+      "auto_execute",
+      "AUTO",
+    );
     return {
       kind: "executed",
       ticker: proposal.ticker,
       proposalId: id,
-      bracketId: handle.bracketId,
+      bracketId,
     };
+  }
+
+  /**
+   * Approve or reject a pending proposal (T1.8). Shared by the REST controller,
+   * the Telegram inline buttons, and any future surface. Approving places the
+   * SIM/paper bracket exactly like AUTO mode but attributed to `user`; an
+   * optional `qty` may only *reduce* the proposed size (downward-only). The
+   * whole decision is idempotent-safe: the underlying status transitions are
+   * guarded on `pending`, so a double-tap can't double-execute.
+   *
+   * @param id - the proposal id
+   * @param decision - approve (execute) or reject
+   * @param opts.qty - downward-only size override on approve
+   */
+  async decideProposal(
+    id: string,
+    decision: "approve" | "reject",
+    opts: { qty?: number } = {},
+  ): Promise<ProposalDecisionOutcome> {
+    const now = this.clock.now();
+    const proposal = await this.proposals.get(id);
+    if (!proposal) return { kind: "not-found", id };
+    if (proposal.status !== "pending") {
+      return { kind: "not-pending", id, status: proposal.status };
+    }
+
+    if (decision === "reject") {
+      await this.proposals.reject(id, now);
+      await this.audit.append({
+        entityType: "proposal",
+        entityId: id,
+        action: "reject",
+        actor: "user",
+        before: { status: "pending", qty: proposal.qty },
+        after: { status: "rejected" },
+      });
+      await this.journal.append({
+        strategyId: proposal.strategyId,
+        entryType: "decision",
+        refType: "proposal",
+        refId: id,
+        title: `Rejected ${proposal.side} ${proposal.qty} ${proposal.ticker}`,
+      });
+      return { kind: "rejected", id, ticker: proposal.ticker };
+    }
+
+    // Approve — validate the (optional) downward-only size change.
+    let qty = proposal.qty;
+    if (opts.qty !== undefined) {
+      if (!(opts.qty > 0)) {
+        throw new ProposalDecisionError("approved qty must be positive");
+      }
+      if (opts.qty > proposal.qty) {
+        throw new ProposalDecisionError(
+          `approved qty ${opts.qty} exceeds proposed ${proposal.qty}; size can only be reduced`,
+        );
+      }
+      qty = opts.qty;
+    }
+
+    const { bracketId } = await this.placeBracketAndRecord(
+      {
+        id,
+        strategyId: proposal.strategyId,
+        ticker: proposal.ticker,
+        side: proposal.side,
+        qty,
+        stop: proposal.stop,
+        target: proposal.target,
+        executionTarget: proposal.executionTarget,
+        riskUsd: proposal.riskUsd,
+      },
+      now,
+      "user",
+      "approve_execute",
+      "APPROVED",
+    );
+    return { kind: "executed", id, ticker: proposal.ticker, qty, bracketId };
+  }
+
+  /** List the pending proposals for the approval surface (REST/Telegram/WS). */
+  async listPendingProposals() {
+    return this.proposals.listPendingDetailed();
+  }
+
+  /**
+   * Place a market bracket for an already-persisted proposal, record the
+   * bracket for the monitor, mark the proposal executed, and write the audit +
+   * journal trail. Shared by AUTO execution and human approval.
+   */
+  private async placeBracketAndRecord(
+    p: BracketableProposal,
+    now: Date,
+    decidedBy: DecidedBy,
+    action: "auto_execute" | "approve_execute",
+    label: string,
+  ): Promise<{ bracketId: string }> {
+    const port = this.execPorts.portFor(p.executionTarget);
+    const request: BracketOrderRequest = {
+      strategyId: p.strategyId,
+      proposalId: p.id,
+      target: p.executionTarget,
+      ticker: p.ticker,
+      side: p.side,
+      qty: p.qty,
+      entryType: "market",
+      stopPrice: p.stop,
+      targetPrice: p.target,
+      timeInForce: "DAY",
+    };
+    const handle = await port.placeBracket(request);
+    this.brackets.record(p.strategyId, p.ticker, handle.bracketId);
+    await this.proposals.markExecuted(p.id, now, decidedBy, p.qty);
+    await this.audit.append({
+      entityType: "proposal",
+      entityId: p.id,
+      action,
+      actor: decidedBy === "user" ? "user" : p.strategyId,
+      after: {
+        bracketId: handle.bracketId,
+        qty: p.qty,
+        stop: p.stop,
+        target: p.target ?? null,
+      },
+    });
+    await this.journal.append({
+      strategyId: p.strategyId,
+      entryType: "decision",
+      refType: "proposal",
+      refId: p.id,
+      title: `${label} executed ${p.side} ${p.qty} ${p.ticker}`,
+      meta: { bracketId: handle.bracketId, decidedBy, riskUsd: p.riskUsd },
+    });
+    return { bracketId: handle.bracketId };
   }
 
   /**

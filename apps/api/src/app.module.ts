@@ -10,6 +10,7 @@ import { DashboardModule } from "./dashboard/dashboard.module.js";
 import { KillSwitchModule } from "./killswitch/killswitch.module.js";
 import { LlmModule } from "./llm/llm.module.js";
 import { PipelineModule } from "./pipeline/pipeline.module.js";
+import { ApprovalsModule } from "./approvals/approvals.module.js";
 
 /**
  * Root module. Order matters: config is global and loaded first; infra
@@ -37,6 +38,7 @@ import { PipelineModule } from "./pipeline/pipeline.module.js";
     KillSwitchModule,
     LlmModule,
     PipelineModule,
+    ApprovalsModule,
   ],
 })
 export class AppModule {}

@@ -461,3 +461,47 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
   genuine band stretch. 15 strategies tests; `src/qual-sphb` 100% stmts/lines,
   90%+ branch. Full workspace: 158 tests, typecheck + eslint + prettier + build
   all green.
+
+## T1.8 — Approval flow (Telegram + REST)
+
+- **Human-in-the-loop for APPROVE-mode proposals.** APPROVE-mode strategies
+  persist a pending proposal and notify; T1.8 adds the decision side — a human
+  can **approve** (place the bracket) or **reject** it, from either Telegram
+  inline buttons or the REST API. AUTO mode is unchanged.
+- **One shared execution path.** Extracted `placeBracketAndRecord` in
+  `PipelineService`, used by both `executeAuto` (AUTO) and the new
+  `decideProposal` (approval). Bracket placement → bracket-index record →
+  `markExecuted` → audit → journal are therefore identical whether a machine or
+  a human pulled the trigger; only `decidedBy` (`"auto"` vs `"user"`) and the
+  audit action differ.
+- **`decideProposal(id, "approve"|"reject", {qty?})` returns a typed outcome**
+  (`executed` | `rejected` | `not-found` | `not-pending`) rather than throwing
+  for control flow. The controller maps these to HTTP 404/409; only a genuine
+  bad request (`ProposalDecisionError`) throws → 400.
+- **Size can only be reduced on approval.** An operator may approve with a
+  smaller `qty` (de-risk), never a larger one — `qty > proposal.qty` throws
+  `ProposalDecisionError`. Simplest safe rule; upsizing would re-open the risk
+  gate the RiskManager already cleared.
+- **Guarded status transitions.** `markExecuted` / `reject` / `expire` are all
+  `WHERE status = 'pending'` in SQL, so a double-tap (Telegram button pressed
+  twice, or button + REST) can't double-execute — the second decision returns
+  `not-pending`. Verified in tests.
+- **Telegram split to avoid a module cycle.** The outbound `TelegramNotifier`
+  (implements `ProposalNotifier`, no pipeline dependency) lives in a leaf
+  `TelegramModule` that `PipelineModule` imports. The inbound `TelegramPoller`
+  (needs `PipelineService`) lives in `ApprovalsModule`, which imports both.
+  No cycle.
+- **Composite notifier.** `PROPOSAL_NOTIFIER` is a `useFactory` that fans a
+  pending proposal to both the WS and Telegram notifiers via
+  `Promise.allSettled` — a dead Telegram never blocks the WS feed or the
+  pipeline.
+- **Fail-open Telegram.** `TelegramApi` returns `null` (never throws) on any
+  transport/HTTP error and no-ops entirely when `TELEGRAM_BOT_TOKEN` is unset,
+  so dev / CI / default-SIM boot without a bot and the trading path never fails
+  because Telegram is down.
+- **Tests.** `decideProposal` integration tests (approve executes the SIM
+  bracket, downward-qty reduces size, upward-qty rejects, reject places no
+  order, not-found, not-pending double-tap) reuse the T1.6 in-memory harness;
+  Telegram notifier/poller unit tests fake the Bot API (no network); controller
+  tests assert the outcome→HTTP-status mapping. Full workspace: 178 tests,
+  typecheck + eslint + prettier + build all green.

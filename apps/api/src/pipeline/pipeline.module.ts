@@ -7,8 +7,12 @@
 import { BullModule } from "@nestjs/bullmq";
 import { Module } from "@nestjs/common";
 import { Simulator } from "@magpie/core";
+import type { TradeProposal } from "@magpie/core";
 import { allStrategies } from "@magpie/strategies";
 import { EventsModule } from "../ws/events.module.js";
+import { TelegramModule } from "../telegram/telegram.module.js";
+import { TelegramNotifier } from "../telegram/telegram.notifier.js";
+import type { ProposalNotifier } from "./pipeline.types.js";
 import { KillSwitchModule } from "../killswitch/killswitch.module.js";
 import { LlmModule } from "../llm/llm.module.js";
 import { QueueModule } from "../queue/queue.module.js";
@@ -61,6 +65,7 @@ import {
     LlmModule,
     KillSwitchModule,
     EventsModule,
+    TelegramModule,
     BullModule.registerQueue({ name: PIPELINE_QUEUE }),
   ],
   providers: [
@@ -80,7 +85,25 @@ import {
     { provide: PIPELINE_AUDIT_SINK, useClass: DrizzlePipelineAuditSink },
     { provide: LLM_ANALYST, useClass: LlmAnalystAdapter },
     { provide: KILL_SWITCH_GATE, useClass: KillSwitchGateAdapter },
-    { provide: PROPOSAL_NOTIFIER, useClass: WsProposalNotifier },
+    // Fan proposal notifications out to both the dashboard (WS) and Telegram.
+    // Errors in either channel are isolated so one down channel can't block the
+    // other or the pipeline.
+    WsProposalNotifier,
+    {
+      provide: PROPOSAL_NOTIFIER,
+      useFactory: (
+        ws: WsProposalNotifier,
+        tg: TelegramNotifier,
+      ): ProposalNotifier => ({
+        async proposalPending(p: TradeProposal & { id: string }) {
+          await Promise.allSettled([
+            ws.proposalPending(p),
+            tg.proposalPending(p),
+          ]);
+        },
+      }),
+      inject: [WsProposalNotifier, TelegramNotifier],
+    },
     { provide: CROWDING_FILTER, useClass: NoopCrowdingFilter },
     { provide: MARKET_CONTEXT_PROVIDER, useClass: DbSimMarketContextProvider },
     { provide: EXECUTION_PORT_PROVIDER, useClass: SimExecutionPortProvider },
