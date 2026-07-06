@@ -17,6 +17,11 @@ import { KillSwitchModule } from "../killswitch/killswitch.module.js";
 import { LlmModule } from "../llm/llm.module.js";
 import { QueueModule } from "../queue/queue.module.js";
 import {
+  AccountEquityService,
+  BROKER_ACCOUNT_PORT,
+  type BrokerAccountPort,
+} from "./account-equity.service.js";
+import {
   DbSimMarketContextProvider,
   FanoutAutoTradeNotifier,
   KillSwitchGateAdapter,
@@ -117,8 +122,16 @@ import {
     // Strategy #6 (T2.4): DB-backed crowding filter + nightly refresh job.
     ...crowdingProviders,
     { provide: CROWDING_FILTER, useExisting: DrizzleCrowdingFilter },
-    { provide: MARKET_CONTEXT_PROVIDER, useClass: DbSimMarketContextProvider },
     ...executionProviders,
+    // Per-strategy equity resolution (A0): SIM virtual cash, else broker NLV.
+    // The broker port is optional so a SIM-only wiring needs no IB connection.
+    {
+      provide: AccountEquityService,
+      useFactory: (simulator: Simulator, broker: BrokerAccountPort | null) =>
+        new AccountEquityService(simulator, broker),
+      inject: [SIMULATOR, { token: BROKER_ACCOUNT_PORT, optional: true }],
+    },
+    { provide: MARKET_CONTEXT_PROVIDER, useClass: DbSimMarketContextProvider },
     {
       provide: EXECUTION_PORT_PROVIDER,
       useExisting: MultiTargetExecutionPortProvider,

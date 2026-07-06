@@ -92,8 +92,13 @@ export interface MarketContext {
    * hours, missing subscription). The sim fill model falls back to last close.
    */
   latestQuote(ticker: Ticker): Promise<Quote | null>;
-  /** Current account equity in account currency (USD), used for risk sizing. */
-  accountEquity(): Promise<number>;
+  /**
+   * Current account equity in account currency (USD), used for risk sizing.
+   * Per strategy: SIM reads the strategy's virtual sim cash, PAPER/LIVE the
+   * broker's net liquidation value.
+   * @param strategyId - the strategy instance whose equity to size against
+   */
+  accountEquity(strategyId: string): Promise<number>;
   /**
    * Currently open positions, optionally filtered to one strategy.
    * @param strategyId - when given, only this strategy's positions

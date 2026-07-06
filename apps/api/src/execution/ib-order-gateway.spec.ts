@@ -39,6 +39,14 @@ class FakeApi extends EventEmitter implements IbOrderApi {
   reqPositions = vi.fn(() => {
     this.reqPosCalls += 1;
   });
+  reqAcctSummaryCalls = 0;
+  cancelAcctSummaryCalls = 0;
+  reqAccountSummary = vi.fn(() => {
+    this.reqAcctSummaryCalls += 1;
+  });
+  cancelAccountSummary = vi.fn(() => {
+    this.cancelAcctSummaryCalls += 1;
+  });
 }
 
 function makeGateway() {
@@ -182,6 +190,25 @@ describe("IbApiOrderGateway event normalization", () => {
     expect(positions).toEqual([
       { account: "DU1", symbol: "QUAL", position: 100, avgCost: 100.5 },
     ]);
+  });
+
+  it("resolves fetchNetLiquidation with the NetLiquidation tag on accountSummaryEnd", async () => {
+    const p = gateway.fetchNetLiquidation();
+    expect(api.reqAcctSummaryCalls).toBe(1);
+    // Unrelated tags are ignored; only NetLiquidation feeds the result.
+    api.emit("accountSummary", 9001, "DU1", "TotalCashValue", "50000", "USD");
+    api.emit(
+      "accountSummary",
+      9001,
+      "DU1",
+      "NetLiquidation",
+      "137500.42",
+      "USD",
+    );
+    api.emit("accountSummaryEnd", 9001);
+    await expect(p).resolves.toBe(137500.42);
+    // The subscription is cancelled once the snapshot arrives.
+    expect(api.cancelAcctSummaryCalls).toBe(1);
   });
 
   it("forwards placeOrder and cancelOrder to the IBApi", () => {

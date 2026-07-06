@@ -149,6 +149,8 @@ export interface IbOrderGateway extends EventEmitter {
   fetchOpenOrders(): Promise<BrokerOpenOrder[]>;
   /** Snapshot all net positions at the broker (reconciliation). */
   fetchPositions(): Promise<BrokerPosition[]>;
+  /** Broker-reported net liquidation value (cash + marked positions), for sizing. */
+  fetchNetLiquidation(): Promise<number>;
 }
 
 /** The subset of the `@stoqey/ib` `IBApi` surface the gateway drives. */
@@ -162,7 +164,12 @@ export interface IbOrderApi {
   cancelOrder(orderId: number, orderCancelParam?: unknown): unknown;
   reqAllOpenOrders(): unknown;
   reqPositions(): unknown;
+  reqAccountSummary(reqId: number, group: string, tags: string): unknown;
+  cancelAccountSummary(reqId: number): unknown;
 }
+
+/** Fixed request id for our single-shot account-summary snapshots. */
+const ACCT_SUMMARY_REQ_ID = 9001;
 
 /** Factory so the real `IBApi` construction is injectable/deferred. */
 export type IbOrderApiFactory = (opts: {
@@ -188,6 +195,9 @@ export class IbApiOrderGateway extends EventEmitter implements IbOrderGateway {
   private openOrdersBuf: BrokerOpenOrder[] = [];
   private positionsWaiters: Array<(p: BrokerPosition[]) => void> = [];
   private openOrdersWaiters: Array<(o: BrokerOpenOrder[]) => void> = [];
+  /** Latest NetLiquidation seen in the in-flight account-summary snapshot. */
+  private nlvBuf: number | null = null;
+  private nlvWaiters: Array<(v: number) => void> = [];
 
   constructor(
     private readonly opts: {
@@ -314,6 +324,23 @@ export class IbApiOrderGateway extends EventEmitter implements IbOrderGateway {
         for (const w of this.openOrdersWaiters.splice(0)) w(batch);
       });
 
+      api.on("accountSummary", (...args: unknown[]) => {
+        // (reqId, account, tag, value, currency)
+        const [, , tag, value] = args;
+        if (String(tag) === "NetLiquidation") this.nlvBuf = num(value);
+      });
+      api.on("accountSummaryEnd", () => {
+        const v = this.nlvBuf ?? 0;
+        this.nlvBuf = null;
+        // The request is a subscription; cancel it now that we have the snapshot.
+        try {
+          this.api?.cancelAccountSummary(ACCT_SUMMARY_REQ_ID);
+        } catch {
+          // best-effort
+        }
+        for (const w of this.nlvWaiters.splice(0)) w(v);
+      });
+
       api.on("error", (...args: unknown[]) => {
         const [err, code, orderId] = args;
         const message = err instanceof Error ? err.message : String(err);
@@ -411,6 +438,14 @@ export class IbApiOrderGateway extends EventEmitter implements IbOrderGateway {
     return new Promise((resolve) => {
       this.positionsWaiters.push(resolve);
       this.api!.reqPositions();
+    });
+  }
+
+  fetchNetLiquidation(): Promise<number> {
+    if (!this.api) return Promise.reject(new Error("IB gateway not connected"));
+    return new Promise((resolve) => {
+      this.nlvWaiters.push(resolve);
+      this.api!.reqAccountSummary(ACCT_SUMMARY_REQ_ID, "All", "NetLiquidation");
     });
   }
 

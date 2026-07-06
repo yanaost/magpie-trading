@@ -25,9 +25,6 @@ import type { MarketContextProvider } from "../pipeline/pipeline.types.js";
 
 @Injectable()
 export class ReplayMarketContextProvider implements MarketContextProvider {
-  /** MVP account equity for risk sizing until the sim portfolio is marked. */
-  private static readonly DEFAULT_EQUITY = 100_000;
-
   constructor(
     @Inject(DB_CLIENT) private readonly dbClient: DbClient,
     @Inject(SIMULATOR) private readonly simulator: Simulator,
@@ -81,8 +78,10 @@ export class ReplayMarketContextProvider implements MarketContextProvider {
         const close = Number(row.close);
         return { ticker, bid: close, ask: close, last: close, ts: row.ts };
       },
-      async accountEquity(): Promise<number> {
-        return ReplayMarketContextProvider.DEFAULT_EQUITY;
+      async accountEquity(strategyId: string): Promise<number> {
+        // Backtests are always SIM: size against the strategy's virtual cash so
+        // a replayed run's position sizes track its running P&L, like live SIM.
+        return simulator.cash(strategyId);
       },
       async openPositions(strategyId?: string): Promise<Position[]> {
         return simulator.getPositions(strategyId);

@@ -226,7 +226,7 @@ export class PipelineService {
     // Risk manager — sizes and gates; the LLM never touches these numbers.
     const decision = runtime.riskManager.evaluate(draft, {
       now,
-      equity: await ctx.accountEquity(),
+      equity: await ctx.accountEquity(strategy.id),
       executionTarget: runtime.executionTarget,
       openPositions: await ctx.openPositions(),
       killSwitchActive: await this.killSwitch.isActive(),
@@ -580,7 +580,7 @@ export class PipelineService {
     };
     const decision = runtime.riskManager.evaluate(draft, {
       now,
-      equity: await ctx.accountEquity(),
+      equity: await ctx.accountEquity(strategyId),
       executionTarget: runtime.executionTarget,
       openPositions: await ctx.openPositions(),
       killSwitchActive: await this.killSwitch.isActive(),

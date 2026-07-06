@@ -19,6 +19,7 @@ import {
   type Ticker,
 } from "@magpie/core";
 import { DB_CLIENT, type DbClient } from "../infra/infra.module.js";
+import { AccountEquityService } from "./account-equity.service.js";
 import { KillSwitchService } from "../killswitch/killswitch.service.js";
 import { LlmAnalystService } from "../llm/llm-analyst.service.js";
 import { EventsGateway } from "../ws/events.gateway.js";
@@ -155,22 +156,23 @@ export class SimExecutionPortProvider implements ExecutionPortProvider {
  * Builds a read-only {@link MarketContext} for a run: candles come from the
  * `candles` table, quotes from the latest stored candle close (the sim fill
  * model tolerates a null quote and falls back to last close), and open
- * positions from the SIM port. Account equity is the SIM starting cash — a
- * live-marked equity model lands with the execution/reconciliation work (T1.8).
+ * positions from the SIM port. Account equity is resolved per strategy by the
+ * {@link AccountEquityService} — SIM virtual cash, or broker net liquidation for
+ * PAPER/LIVE (A0).
  */
 @Injectable()
 export class DbSimMarketContextProvider implements MarketContextProvider {
-  /** MVP account equity for risk sizing until the sim portfolio is marked. */
-  private static readonly DEFAULT_EQUITY = 100_000;
-
   constructor(
     @Inject(DB_CLIENT) private readonly dbClient: DbClient,
     @Inject(SIMULATOR) private readonly simulator: Simulator,
+    @Inject(AccountEquityService)
+    private readonly equity: AccountEquityService,
   ) {}
 
   async contextFor(target: ExecutionTarget, now: Date): Promise<MarketContext> {
     const { db } = this.dbClient;
     const simulator = this.simulator;
+    const equity = this.equity;
     return {
       now,
       target,
@@ -213,8 +215,8 @@ export class DbSimMarketContextProvider implements MarketContextProvider {
         const close = Number(row.close);
         return { ticker, bid: close, ask: close, last: close, ts: row.ts };
       },
-      async accountEquity(): Promise<number> {
-        return DbSimMarketContextProvider.DEFAULT_EQUITY;
+      async accountEquity(strategyId: string): Promise<number> {
+        return equity.equityFor(target, strategyId);
       },
       async openPositions(strategyId?: string): Promise<Position[]> {
         return simulator.getPositions(strategyId);

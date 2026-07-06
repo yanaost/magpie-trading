@@ -15,6 +15,10 @@ import {
 } from "@magpie/core";
 import { APP_CONFIG, type AppConfig } from "../config/env.schema.js";
 import { SIMULATOR } from "../pipeline/pipeline.providers.js";
+import {
+  BROKER_ACCOUNT_PORT,
+  type BrokerAccountPort,
+} from "../pipeline/account-equity.service.js";
 import type { ExecutionPortProvider } from "../pipeline/pipeline.types.js";
 import { IbExecutionPort } from "./ib-execution-port.js";
 import {
@@ -31,8 +35,11 @@ export const IB_ORDER_API_FACTORY = Symbol("IB_ORDER_API_FACTORY");
  * connected on first use; LIVE always throws.
  */
 @Injectable()
-export class MultiTargetExecutionPortProvider implements ExecutionPortProvider {
+export class MultiTargetExecutionPortProvider
+  implements ExecutionPortProvider, BrokerAccountPort
+{
   private ibPort: IbExecutionPort | null = null;
+  private ibGateway: IbApiOrderGateway | null = null;
 
   constructor(
     @Inject(SIMULATOR) private readonly simulator: Simulator,
@@ -56,17 +63,34 @@ export class MultiTargetExecutionPortProvider implements ExecutionPortProvider {
     }
   }
 
-  /** The IB paper port, built + connected lazily on first PAPER order. */
-  private paperPort(): IbExecutionPort {
-    if (this.ibPort) return this.ibPort;
-    const gateway = new IbApiOrderGateway({
+  /**
+   * Broker-reported net liquidation value for PAPER/LIVE risk sizing (A0).
+   * Reuses the lazily-built paper gateway, connecting it on first use so a
+   * SIM-only boot never opens the broker socket.
+   */
+  async netLiquidationValue(): Promise<number> {
+    const gateway = this.buildGateway();
+    if (!gateway.isConnected()) await gateway.connect();
+    return gateway.fetchNetLiquidation();
+  }
+
+  /** The IB order gateway, built once (no socket until {@link connect}). */
+  private buildGateway(): IbApiOrderGateway {
+    if (this.ibGateway) return this.ibGateway;
+    this.ibGateway = new IbApiOrderGateway({
       host: this.config.IB_GATEWAY_HOST,
       port: this.config.IB_GATEWAY_PORT,
       // Distinct client id from the market-data connection to avoid a clash.
       clientId: this.config.IB_CLIENT_ID + 1,
       factory: this.ibFactory,
     });
-    this.ibPort = new IbExecutionPort(gateway);
+    return this.ibGateway;
+  }
+
+  /** The IB paper port, built + connected lazily on first PAPER order. */
+  private paperPort(): IbExecutionPort {
+    if (this.ibPort) return this.ibPort;
+    this.ibPort = new IbExecutionPort(this.buildGateway());
     return this.ibPort;
   }
 }
@@ -75,4 +99,9 @@ export class MultiTargetExecutionPortProvider implements ExecutionPortProvider {
 export const executionProviders = [
   { provide: IB_ORDER_API_FACTORY, useValue: createIbOrderApi },
   MultiTargetExecutionPortProvider,
+  // The same provider answers PAPER/LIVE net-liquidation for risk sizing (A0).
+  {
+    provide: BROKER_ACCOUNT_PORT,
+    useExisting: MultiTargetExecutionPortProvider,
+  },
 ];

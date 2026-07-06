@@ -1052,3 +1052,52 @@ deps)` looks the strategy up in `VARIANT_BUILDERS` and constructs it with the
   queue-backlog fire independently; a cold-boot null heartbeat does not alert; a
   throwing probe doesn't crash the loop. Gate green: api 169 → 173,
   typecheck/eslint/prettier + full suite clean.
+
+## A0 — Real account equity for risk sizing
+
+- **The bug.** `accountEquity()` returned a fixed `100_000` on both market-context
+  providers (`DbSimMarketContextProvider`, `ReplayMarketContextProvider`),
+  regardless of the strategy's actual account. Since `RiskManager.evaluate` sizes
+  every trade as `riskBudgetUsd = equity * maxRiskPerTradePct / 100`, this meant a
+  strategy that had drawn its SIM account down to $40k still sized as if it held
+  $100k — every downstream position size was distorted. Fixed so equity is _real_
+  per-target buying power.
+- **Per-strategy, not global.** `MarketContext.accountEquity()` widened to
+  `accountEquity(strategyId)`. The `Simulator` already keeps per-strategy-instance
+  virtual portfolios, so SIM equity is `simulator.cash(strategyId)` — it starts at
+  the portfolio's starting cash and tracks realized P&L as trades close. Widening
+  the interface is safe: an implementation with fewer params still satisfies it
+  (parameter contravariance), so the no-arg test stubs kept compiling.
+- **SIM = virtual cash (not mark-to-market NLV).** SIM sizes against sim _cash_.
+  While a position is open, cash is debited by its entry cost, so mid-trade cash
+  understates true equity by the open position's market value — deliberately
+  conservative (unrealized gains never inflate the next size). A mark-to-market
+  SIM NLV is a possible future refinement; the checklist explicitly asked for
+  "virtual cash," and it's the honest number when flat.
+- **PAPER/LIVE = broker net liquidation value.** Added a `BrokerAccountPort`
+  (`netLiquidationValue()`) seam; `AccountEquityService` returns sim cash for SIM
+  and the broker NLV otherwise. The real IB reader (`fetchNetLiquidation` on the
+  gateway, via `reqAccountSummary` NetLiquidation) reuses the lazily-connected
+  paper gateway, so a SIM-only boot never opens the broker socket; the port is
+  `@Optional`, so PAPER equity throws a clear error if no IB account is wired
+  rather than silently falling back to a constant.
+- **Wiring, not a god-object.** `AccountEquityService` is a plain class wired via
+  `useFactory` (injecting `SIMULATOR` + optional `BROKER_ACCOUNT_PORT`) so it
+  doesn't import the `SIMULATOR` token — that would circular-load with
+  `pipeline.providers`. `MultiTargetExecutionPortProvider` implements
+  `BrokerAccountPort` (it already owns the gateway lifecycle) and is bound to the
+  token via `useExisting`.
+- **Tests.** `account-equity.service.spec.ts` drives a _real_ `Simulator` through
+  a winning and a losing round-trip and asserts equity (and the resulting
+  `RiskManager` risk budget) follows cash up then down; a second case sizes off a
+  non-default $50k start to prove it's not a hardcoded 100k; PAPER sizes against a
+  fake broker's $250k NLV and throws when no broker is wired. `ib-order-gateway.spec.ts`
+  proves `fetchNetLiquidation` resolves the NetLiquidation tag and cancels the
+  subscription. Gate green: api 173 → 178, typecheck/eslint/prettier + full suite
+  clean.
+- **Live PAPER verification deferred.** The broker NLV path is unit-tested against
+  a fake IB api but not yet verified against a live IB paper account (account not
+  cleared at time of writing). The A0 Verify step (reset a SIM portfolio to a
+  non-default cash, trigger a proposal, confirm risk $ ≈ 1–2% of _that_ cash) is
+  covered for SIM by the unit tests; the live PAPER round-trip is pending the
+  paper account.

@@ -50,6 +50,9 @@ class FakeGateway extends EventEmitter implements IbOrderGateway {
   fetchPositions(): Promise<BrokerPosition[]> {
     return Promise.resolve(this.positions);
   }
+  fetchNetLiquidation(): Promise<number> {
+    return Promise.resolve(100_000);
+  }
 }
 
 const longBracket = {
