@@ -20,6 +20,9 @@ export * from "./valuation-gravity/valuation-gravity.strategy.js";
 export * from "./snapback/premarket-screener.js";
 export * from "./snapback/reclaim-detector.js";
 export * from "./snapback/snapback.strategy.js";
+export * from "./squeeze-scalp/short-interest.js";
+export * from "./squeeze-scalp/squeeze-detector.js";
+export * from "./squeeze-scalp/squeeze-scalp.strategy.js";
 export * from "./registry.js";
 
 import type { Strategy } from "@magpie/core";

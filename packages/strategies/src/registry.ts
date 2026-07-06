@@ -17,6 +17,7 @@ import { HypeMomentumStrategy } from "./hype-momentum/hype-momentum.strategy.js"
 import { FridayMondayFlowStrategy } from "./friday-monday/friday-monday.strategy.js";
 import { ValuationGravityStrategy } from "./valuation-gravity/valuation-gravity.strategy.js";
 import { SnapbackStrategy } from "./snapback/snapback.strategy.js";
+import { SqueezeScalpStrategy } from "./squeeze-scalp/squeeze-scalp.strategy.js";
 
 /** Constructs a fresh strategy instance. */
 export type StrategyFactory = () => Strategy;
@@ -32,6 +33,7 @@ export const STRATEGY_FACTORIES: readonly StrategyFactory[] = [
   () => new FridayMondayFlowStrategy(),
   () => new ValuationGravityStrategy(),
   () => new SnapbackStrategy(),
+  () => new SqueezeScalpStrategy(),
 ];
 
 /** Instantiate all registered strategies. */

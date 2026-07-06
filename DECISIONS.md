@@ -905,3 +905,30 @@ unit-testable with fakes (no DB, no Nest DI).
 - Registered via one `registry.ts` factory line + barrel export (zero other
   changes — the T2.3 plugin contract). Gate green: strategies 89 → 112 tests
   (detector 7, screener 6, strategy 10); typecheck/eslint/prettier + suite clean.
+
+## T3.3 — Strategy #4 Squeeze scalp (intraday)
+
+- **Two-sided risk control is the edge.** A >20%-of-float short name breaks out
+  on real news → shorts cover → fast squeeze. Two guards protect it: the LLM must
+  confirm the catalyst is real news, **not a pump** (a coordinated ramp has no
+  covering fuel and reverses violently — the `llmPrompt` veto), and a **chase
+  guard** refuses any entry once the name is already +30% on the day (fuel spent).
+- **Nightly short-interest behind a port.** SI data isn't in the broker feed, so
+  it comes through `ShortInterestProvider` (a Finviz-style/API export ingested
+  nightly). `StaticShortInterestProvider` filters the roster to the >20% band for
+  tests/replay; empty by default until the ingest is wired.
+- **Pure detector, pure ladder.** `detectSqueezeBreakout` (resistance break +
+  volume confirmation + chase guard) and `planScaleOut` (the exit ladder) are
+  I/O-free, so both AC unit tests — chase-guard and partial-exit — are direct and
+  replay is deterministic.
+- **Scaled exits without cross-call state.** `planScaleOut` banks the first
+  tranche (half at +5%) only while `remainingQty >= entryQty`; taking it drops
+  the qty below the entry lot, so the rung cannot re-fire — no per-position flag
+  needed. The runner rung closes the rest at +10%. `manage` reads a per-ticker
+  `lastPrice` cached by `scan` (the sync-manage contract; monitor-before-scan
+  means a one-tick-stale price, fine at 5-min bars). Assumes a full 100-lot fill;
+  a partial fill simply won't trip the first rung (safe, not over-scaling).
+- **Tight stop** 3% below entry (spec 2–4%), `flatByClose` on the exit plan.
+- Registered via one factory line + barrel export (T2.3 contract). Gate green:
+  strategies 112 → 139 tests (detector 13, short-interest 4, strategy 10);
+  typecheck/eslint/prettier + full suite clean.
