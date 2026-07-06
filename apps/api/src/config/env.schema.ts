@@ -59,6 +59,17 @@ export const envSchema = z.object({
     .default(30_000),
   /** Proposal TTL-expiry sweep cadence (ms). Default 60s. */
   PIPELINE_EXPIRY_SWEEP_MS: z.coerce.number().int().positive().default(60_000),
+  /**
+   * Crowding-filter refresh cadence (ms) — the nightly job that asks the LLM
+   * for currently over-recommended tickers (strategy #6, T2.4 / BRINGUP B1).
+   * Default 24h. Failures (e.g. no ANTHROPIC_API_KEY / no credits) are isolated
+   * so a bad run never crashes the worker.
+   */
+  PIPELINE_CROWDING_REFRESH_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(86_400_000),
 
   /**
    * Uptime monitor (T3.6). When enabled, a background loop probes gateway

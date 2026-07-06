@@ -15,10 +15,11 @@ import { Queue, type Job } from "bullmq";
 import { APP_CONFIG, type AppConfig } from "../config/env.schema.js";
 import { PipelineService } from "./pipeline.service.js";
 import { STRATEGY_REGISTRY, type StrategyRegistry } from "./pipeline.types.js";
+import { CrowdingRefreshService } from "../crowding/crowding-refresh.service.js";
 
 export const PIPELINE_QUEUE = "pipeline";
 
-type PipelineJobName = "scan" | "monitor" | "expiry";
+type PipelineJobName = "scan" | "monitor" | "expiry" | "crowding";
 
 @Processor(PIPELINE_QUEUE)
 export class PipelineProcessor extends WorkerHost {
@@ -27,6 +28,7 @@ export class PipelineProcessor extends WorkerHost {
   constructor(
     private readonly pipeline: PipelineService,
     @Inject(STRATEGY_REGISTRY) private readonly registry: StrategyRegistry,
+    private readonly crowding: CrowdingRefreshService,
   ) {
     super();
   }
@@ -46,6 +48,20 @@ export class PipelineProcessor extends WorkerHost {
         const expired = await this.pipeline.sweepExpiredProposals();
         if (expired > 0)
           this.logger.log(`expired ${expired} stale proposal(s)`);
+        return;
+      }
+      case "crowding": {
+        // Nightly LLM crowding refresh (T2.4 / BRINGUP B1). Fail inert: a bad
+        // run (no key / no credits / provider down) logs and leaves the last
+        // good crowded_tickers set in place — never crashes the worker.
+        try {
+          const { tickers } = await this.crowding.refresh();
+          this.logger.log(`crowding refresh: ${tickers.length} ticker(s)`);
+        } catch (err) {
+          this.logger.warn(
+            `crowding refresh skipped: ${(err as Error).message}`,
+          );
+        }
         return;
       }
       default:
@@ -96,6 +112,11 @@ export class PipelineScheduler implements OnModuleInit {
         id: "pipeline-expiry",
         name: "expiry",
         every: this.config.PIPELINE_EXPIRY_SWEEP_MS,
+      },
+      {
+        id: "pipeline-crowding",
+        name: "crowding",
+        every: this.config.PIPELINE_CROWDING_REFRESH_MS,
       },
     ];
     for (const job of jobs) {
