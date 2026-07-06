@@ -24,7 +24,6 @@ import { LlmAnalystService } from "../llm/llm-analyst.service.js";
 import { EventsGateway } from "../ws/events.gateway.js";
 import type {
   Clock,
-  CrowdingFilter,
   ExecutionPortProvider,
   KillSwitchGate,
   LlmAnalyst,
@@ -47,14 +46,6 @@ export const SIMULATOR = Symbol("SIMULATOR");
 export class SystemClock implements Clock {
   now(): Date {
     return new Date();
-  }
-}
-
-/** No-op crowding filter (T1.6). Strategy #6 later backs it with evidence. */
-@Injectable()
-export class NoopCrowdingFilter implements CrowdingFilter {
-  async isCrowded(_ticker: Ticker): Promise<boolean> {
-    return false;
   }
 }
 

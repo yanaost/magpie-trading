@@ -10,6 +10,7 @@ import type { AppConfig } from "../config/env.schema.js";
 import type { PipelineService } from "../pipeline/pipeline.service.js";
 import type { EventsGateway } from "../ws/events.gateway.js";
 import type { DashboardService } from "../dashboard/dashboard.service.js";
+import type { CrowdingRefreshService } from "../crowding/crowding-refresh.service.js";
 import { DevController } from "./dev.controller.js";
 
 function make(config: Partial<AppConfig>) {
@@ -21,14 +22,26 @@ function make(config: Partial<AppConfig>) {
   const updateQuote = vi.fn();
   const emitPositions = vi.fn();
   const openPositions = vi.fn(async () => []);
+  const refresh = vi.fn(async () => ({
+    tickers: ["AAPL"],
+    expiresAt: "2026-08-01T00:00:00.000Z",
+  }));
   const controller = new DevController(
     config as AppConfig,
     { injectSyntheticProposal: inject } as unknown as PipelineService,
     { updateQuote } as unknown as Simulator,
     { emitPositions } as unknown as EventsGateway,
     { openPositions } as unknown as DashboardService,
+    { refresh } as unknown as CrowdingRefreshService,
   );
-  return { controller, inject, updateQuote, emitPositions, openPositions };
+  return {
+    controller,
+    inject,
+    updateQuote,
+    emitPositions,
+    openPositions,
+    refresh,
+  };
 }
 
 describe("DevController gate", () => {
@@ -87,5 +100,22 @@ describe("DevController.trigger", () => {
     );
     expect(openPositions).toHaveBeenCalledOnce();
     expect(emitPositions).toHaveBeenCalledOnce();
+  });
+});
+
+describe("DevController.refreshCrowding", () => {
+  it("runs the refresh when enabled", async () => {
+    const { controller, refresh } = make({ NODE_ENV: "development" });
+    const res = await controller.refreshCrowding();
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(res.tickers).toEqual(["AAPL"]);
+  });
+
+  it("is gated in production", async () => {
+    const { controller, refresh } = make({ NODE_ENV: "production" });
+    await expect(controller.refreshCrowding()).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(refresh).not.toHaveBeenCalled();
   });
 });

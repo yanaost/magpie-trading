@@ -147,12 +147,20 @@ export interface ProposalNotifier {
   proposalPending(proposal: TradeProposal & { id: string }): Promise<void>;
 }
 
+/** Whether a ticker is currently crowded, with the evidence that flagged it. */
+export interface CrowdingStatus {
+  readonly crowded: boolean;
+  /** Human-readable reason from the nightly research job, when crowded. */
+  readonly evidence?: string;
+}
+
 /**
- * Crowding filter hook (spec §4.2 step). A no-op in T1.6 (always false);
- * strategy #6 later backs it with the `crowded_tickers` evidence store.
+ * Crowding filter hook (spec §4.2 step). A no-op in T1.6 (never crowded);
+ * strategy #6 (T2.4) backs it with the `crowded_tickers` evidence store, which
+ * the nightly research job populates.
  */
 export interface CrowdingFilter {
-  isCrowded(ticker: Ticker): Promise<boolean>;
+  check(ticker: Ticker): Promise<CrowdingStatus>;
 }
 
 /** Builds the read-only market context for a run on a given rung. */

@@ -63,7 +63,7 @@ import {
 /** The outcome of processing one signal — surfaced for tests/observability. */
 export type SignalOutcome =
   | { kind: "vetoed"; ticker: string; reason: string }
-  | { kind: "crowded"; ticker: string }
+  | { kind: "crowded"; ticker: string; reason: "CROWDED_TICKER" }
   | { kind: "risk-rejected"; ticker: string; rule: string }
   | { kind: "executed"; ticker: string; proposalId: string; bracketId: string }
   | { kind: "proposed"; ticker: string; proposalId: string }
@@ -181,20 +181,32 @@ export class PipelineService {
       };
     }
 
-    // Crowding filter hook (no-op in T1.6; strategy #6 backs it later).
-    if (await this.crowding.isCrowded(signal.ticker)) {
-      await this.journal.append({
-        strategyId: strategy.id,
-        entryType: "decision",
-        refType: "signal",
-        refId: signalId,
-        title: `Crowding veto on ${signal.ticker}`,
-      });
-      return { kind: "crowded", ticker: signal.ticker };
+    // Build the trade idea so we know the side before the crowding/risk gates.
+    const draft = strategy.buildProposal(signal, analysis);
+
+    // Crowding filter (strategy #6, T2.4): veto NEW-LONG entries on names the
+    // nightly research job flagged as over-recommended. Shorts and exits pass.
+    if (draft.side === "long") {
+      const status = await this.crowding.check(signal.ticker);
+      if (status.crowded) {
+        await this.journal.append({
+          strategyId: strategy.id,
+          entryType: "decision",
+          refType: "signal",
+          refId: signalId,
+          title: `Crowding veto on ${signal.ticker} (CROWDED_TICKER)`,
+          body: status.evidence,
+          meta: { reason: "CROWDED_TICKER" },
+        });
+        return {
+          kind: "crowded",
+          ticker: signal.ticker,
+          reason: "CROWDED_TICKER",
+        };
+      }
     }
 
     // Risk manager — sizes and gates; the LLM never touches these numbers.
-    const draft = strategy.buildProposal(signal, analysis);
     const decision = runtime.riskManager.evaluate(draft, {
       now,
       equity: await ctx.accountEquity(),
@@ -522,6 +534,60 @@ export class PipelineService {
       applied += 1;
     }
     return applied;
+  }
+
+  /**
+   * Crowding stop-tightening pass (strategy #6, T2.4). For every open *long*
+   * position on a currently-crowded ticker, emit a `modify-stop` suggestion that
+   * halves the remaining risk (moves the stop halfway to entry). These are
+   * advisory: they are journalled for the operator, not auto-applied — strategy
+   * #6 runs WATCH-only, and tightening a live stop is a human call. Returns the
+   * suggested actions (with the position) for the caller/tests.
+   * @param strategyId - the strategy whose positions to scan
+   */
+  async suggestCrowdingStops(
+    strategyId: string,
+  ): Promise<Array<{ ticker: string; action: ExitAction }>> {
+    const runtime = await this.registry.getRuntime(strategyId);
+    if (!runtime) return [];
+    const port = this.execPorts.portFor(runtime.executionTarget);
+    const positions = await port.getPositions(strategyId);
+
+    const suggestions: Array<{ ticker: string; action: ExitAction }> = [];
+    for (const position of positions) {
+      if (position.side !== "long" || position.stopPrice === undefined)
+        continue;
+      const status = await this.crowding.check(position.ticker);
+      if (!status.crowded) continue;
+
+      // Tighten the long stop halfway toward entry (never loosen it).
+      const tightened =
+        position.stopPrice + (position.avgEntryPrice - position.stopPrice) / 2;
+      if (tightened <= position.stopPrice) continue;
+      const newStopPrice = Math.round(tightened * 100) / 100;
+      const action: ExitAction = {
+        kind: "modify-stop",
+        reason: "CROWDED_TICKER",
+        newStopPrice,
+      };
+
+      await this.journal.append({
+        strategyId,
+        entryType: "decision",
+        refType: "position",
+        refId: position.id,
+        title: `Crowding: suggest tightening ${position.ticker} stop → ${newStopPrice}`,
+        body: status.evidence,
+        meta: {
+          reason: "CROWDED_TICKER",
+          suggestion: "tighten-stop",
+          fromStop: position.stopPrice,
+          toStop: newStopPrice,
+        },
+      });
+      suggestions.push({ ticker: position.ticker, action });
+    }
+    return suggestions;
   }
 
   /** Translate an {@link ExitAction} into a bracket modify/cancel. */

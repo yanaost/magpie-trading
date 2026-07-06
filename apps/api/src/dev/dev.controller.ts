@@ -15,6 +15,10 @@ import {
 import { SIMULATOR } from "../pipeline/pipeline.providers.js";
 import { EventsGateway } from "../ws/events.gateway.js";
 import { DashboardService } from "../dashboard/dashboard.service.js";
+import {
+  CrowdingRefreshService,
+  type CrowdingRefreshResult,
+} from "../crowding/crowding-refresh.service.js";
 
 /** Optional overrides for the synthetic trigger. */
 interface TriggerBody {
@@ -39,6 +43,7 @@ export class DevController {
     @Inject(SIMULATOR) private readonly simulator: Simulator,
     private readonly gateway: EventsGateway,
     private readonly dashboard: DashboardService,
+    private readonly crowding: CrowdingRefreshService,
   ) {
     this.enabled =
       config.DEV_TRIGGER_ENABLED ?? config.NODE_ENV !== "production";
@@ -77,5 +82,18 @@ export class DevController {
     this.gateway.emitPositions(await this.dashboard.openPositions());
 
     return { outcome };
+  }
+
+  /**
+   * Manually run the nightly crowding research + refresh (strategy #6, T2.4).
+   * Idempotent — each call fully replaces the `crowded_tickers` store, so
+   * repeated calls converge to the same set.
+   */
+  @Post("crowding/refresh")
+  async refreshCrowding(): Promise<CrowdingRefreshResult> {
+    if (!this.enabled) {
+      throw new ForbiddenException("dev trigger disabled");
+    }
+    return this.crowding.refresh();
   }
 }

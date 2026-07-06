@@ -20,12 +20,14 @@ import {
   DbSimMarketContextProvider,
   KillSwitchGateAdapter,
   LlmAnalystAdapter,
-  NoopCrowdingFilter,
   SystemClock,
   SIMULATOR,
   STRATEGY_INSTANCES,
   WsProposalNotifier,
 } from "./pipeline.providers.js";
+import { crowdingProviders } from "../crowding/crowding.providers.js";
+import { DrizzleCrowdingFilter } from "../crowding/drizzle-crowding-filter.js";
+import { CrowdingRefreshService } from "../crowding/crowding-refresh.service.js";
 import {
   executionProviders,
   MultiTargetExecutionPortProvider,
@@ -107,7 +109,9 @@ import {
       }),
       inject: [WsProposalNotifier, TelegramNotifier],
     },
-    { provide: CROWDING_FILTER, useClass: NoopCrowdingFilter },
+    // Strategy #6 (T2.4): DB-backed crowding filter + nightly refresh job.
+    ...crowdingProviders,
+    { provide: CROWDING_FILTER, useExisting: DrizzleCrowdingFilter },
     { provide: MARKET_CONTEXT_PROVIDER, useClass: DbSimMarketContextProvider },
     ...executionProviders,
     {
@@ -117,6 +121,12 @@ import {
     { provide: BRACKET_INDEX, useClass: InMemoryBracketIndex },
     { provide: PIPELINE_CLOCK, useClass: SystemClock },
   ],
-  exports: [PipelineService, SIMULATOR, EXECUTION_PORT_PROVIDER, BRACKET_INDEX],
+  exports: [
+    PipelineService,
+    SIMULATOR,
+    EXECUTION_PORT_PROVIDER,
+    BRACKET_INDEX,
+    CrowdingRefreshService,
+  ],
 })
 export class PipelineModule {}

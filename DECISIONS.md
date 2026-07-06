@@ -660,3 +660,41 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
   charting dep for a 200×40 line.
 - Full gate green: core 94 tests (perf +9), strategies 18 (registry +3), api 133
   (perf +1); typecheck/eslint/prettier + Next.js build.
+
+## T2.4 — Crowding filter (strategy #6)
+
+- **Crowding vetoes only NEW-LONG entries.** The over-recommended (crowded)
+  signal is a *long* signal — everyone is already in the trade — so the filter
+  runs after `buildProposal` (side is known) and vetoes only `side === "long"`
+  proposals with reason code `CROWDED_TICKER`. Shorts and exits pass untouched.
+  Moving `buildProposal` ahead of the crowding + risk gates was the enabling
+  change (AC: "proposal on a crowded ticker vetoed with reason CROWDED_TICKER").
+- **The filter is a thin DB read; the store is the source of truth.**
+  `DrizzleCrowdingFilter.check(ticker)` returns `{crowded, evidence?}` from the
+  most-recent non-expired `crowded_tickers` row (`expires_at > now`). Reads only
+  — the nightly job owns writes. Evidence flows into the veto journal entry.
+- **The nightly job is a full replace → idempotent by construction.**
+  `CrowdingRefreshService.refresh()` asks the researcher for the current crowded
+  set and rewrites `crowded_tickers` inside one transaction (delete-all →
+  insert), stamping a 30-day expiry. Running it twice converges to the same set,
+  no duplicates (AC: "nightly job manually runnable and idempotent"). Tickers are
+  upper-cased + de-duped (first evidence wins) before insert.
+- **Research is behind an interface, defaulting to null offline.**
+  `CrowdingResearcher` has an Anthropic impl (Claude + server-side web_search,
+  JSON-schema-constrained output: which US equities are over-recommended right
+  now, with one-line evidence) and a `NullCrowdingResearcher` (returns none).
+  The DI factory picks Anthropic only when `ANTHROPIC_API_KEY` is set, so CI /
+  offline runs never touch the network. Any transport error propagates — the
+  caller keeps the previous set rather than blanking the store on a bad run.
+- **Stop-tightening is advisory, not auto-applied.** `suggestCrowdingStops`
+  scans open long positions with a stop on crowded names and emits a `modify-stop`
+  suggestion that halves remaining risk (stop moved halfway to entry, cent-rounded,
+  never loosened). These are journalled for the operator, not executed — strategy
+  #6 runs WATCH-only and tightening a live stop is a human call.
+- **Manual trigger via the dev surface.** `POST /dev/crowding/refresh` (gated by
+  `DEV_TRIGGER_ENABLED`, same as the T1.9 trigger) runs the job on demand and
+  returns the resulting ticker set + expiry — the "manually runnable" half of the
+  AC without waiting on a scheduler.
+- Full gate green: api 142 tests (+9: crowding refresh 4, filter 2, pipeline
+  crowd-veto + suggest-stops, dev refresh 2); typecheck/eslint/prettier + all
+  package builds + Next.js build.

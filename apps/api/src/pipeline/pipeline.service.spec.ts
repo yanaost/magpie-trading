@@ -321,8 +321,10 @@ function build(opts: {
     audit,
     notifier,
     {
-      async isCrowded() {
-        return opts.crowded ?? false;
+      async check() {
+        return opts.crowded
+          ? { crowded: true, evidence: "heavy fintwit hype" }
+          : { crowded: false };
       },
     },
     {
@@ -423,12 +425,72 @@ describe("PipelineService — mode gate", () => {
     expect(h.proposals.persisted.size).toBe(0);
   });
 
-  it("crowding filter vetoes a proceed signal", async () => {
+  it("crowding filter vetoes a proceed signal with reason CROWDED_TICKER", async () => {
     const h = build({ mode: "AUTO", crowded: true });
     const [outcome] = await h.service.runScan("qual-sphb");
     if (!outcome) throw new Error("expected an outcome");
     expect(outcome.kind).toBe("crowded");
+    if (outcome.kind === "crowded") {
+      expect(outcome.reason).toBe("CROWDED_TICKER");
+    }
     expect(h.port.placed).toHaveLength(0);
+    expect(h.proposals.persisted.size).toBe(0);
+    // The veto is journalled with the reason code + evidence.
+    const veto = h.journal.entries.find(
+      (e) => e.meta?.reason === "CROWDED_TICKER",
+    );
+    expect(veto).toBeDefined();
+    expect(veto?.body).toBe("heavy fintwit hype");
+  });
+
+  it("suggestCrowdingStops tightens long stops halfway to entry and journals them", async () => {
+    const h = build({ mode: "AUTO", crowded: true });
+    h.port.setPositions([
+      {
+        id: "11111111-1111-1111-1111-111111111111",
+        strategyId: "qual-sphb",
+        target: "SIM",
+        ticker: "QUAL",
+        side: "long",
+        status: "open",
+        qty: 10,
+        avgEntryPrice: 100,
+        stopPrice: 90,
+        realizedPnl: 0,
+        unrealizedPnl: 0,
+        openedAt: NOW,
+      },
+      // Short position — not tightened.
+      {
+        id: "22222222-2222-2222-2222-222222222222",
+        strategyId: "qual-sphb",
+        target: "SIM",
+        ticker: "SHRT",
+        side: "short",
+        status: "open",
+        qty: 5,
+        avgEntryPrice: 100,
+        stopPrice: 110,
+        realizedPnl: 0,
+        unrealizedPnl: 0,
+        openedAt: NOW,
+      },
+    ]);
+
+    const suggestions = await h.service.suggestCrowdingStops("qual-sphb");
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]?.ticker).toBe("QUAL");
+    // Halfway from 90 to entry 100 → 95.
+    expect(suggestions[0]?.action).toMatchObject({
+      kind: "modify-stop",
+      newStopPrice: 95,
+    });
+    // Advisory only — no order modification actually applied.
+    expect(h.port.modifications).toHaveLength(0);
+    const note = h.journal.entries.find(
+      (e) => e.meta?.suggestion === "tighten-stop",
+    );
+    expect(note?.meta?.toStop).toBe(95);
   });
 
   it("risk rejection (kill switch) records a risk event and does not execute", async () => {
