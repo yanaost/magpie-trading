@@ -9,7 +9,7 @@ WORKDIR /app
 FROM base AS build
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @trading-app/core --filter @trading-app/db --filter @trading-app/api build
+RUN pnpm --filter @magpie/core --filter @magpie/db --filter @magpie/strategies --filter @magpie/api build
 
 FROM base AS runtime
 ENV NODE_ENV=production
