@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { StrategySummary } from "@/lib/api";
 import { setStrategy, triggerSynthetic } from "@/lib/browser-api";
 
@@ -35,6 +35,18 @@ export default function StrategyControls({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Re-sync from the server whenever the roster prop refreshes (the parent polls
+  // the API). Without this the badge freezes on its first-render value and shows
+  // a stale mode after a change made elsewhere — dangerous on a trading panel.
+  // A local edit sets these optimistically and the next poll returns the same
+  // value, so there's no flicker.
+  useEffect(() => {
+    setMode(strategy.mode);
+  }, [strategy.mode]);
+  useEffect(() => {
+    setTarget(strategy.target);
+  }, [strategy.target]);
 
   async function change(patch: {
     mode?: string;

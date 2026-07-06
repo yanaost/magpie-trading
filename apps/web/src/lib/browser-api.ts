@@ -37,6 +37,9 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+export const getStrategies = (): Promise<StrategySummary[]> =>
+  req<StrategySummary[]>("/api/strategies");
+
 export const getPositions = (): Promise<PositionView[]> =>
   req<PositionView[]>("/api/positions");
 

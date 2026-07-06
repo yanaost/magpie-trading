@@ -10,7 +10,7 @@ import type {
   PositionView,
   StrategySummary,
 } from "@/lib/api";
-import { getBacktests, getPerformance } from "@/lib/browser-api";
+import { getBacktests, getPerformance, getStrategies } from "@/lib/browser-api";
 import StrategyControls from "./strategy-controls";
 
 const TARGETS = ["SIM", "PAPER", "LIVE"] as const;
@@ -34,16 +34,44 @@ export default function StrategyTabs({
 }): ReactNode {
   const [active, setActive] = useState(strategies[0]?.id ?? "");
 
-  if (strategies.length === 0) {
+  // The SSR roster is a point-in-time snapshot; mode/target can change from
+  // another tab, the kill switch, or this session. Re-poll so the badges track
+  // reality instead of freezing on the first render. Refresh on an interval and
+  // whenever the tab regains focus (the moment you look back at it).
+  const [roster, setRoster] = useState(strategies);
+  useEffect(() => {
+    let live = true;
+    const sync = (): void => {
+      if (document.visibilityState === "hidden") return;
+      getStrategies()
+        .then((next) => {
+          if (live) setRoster(next);
+        })
+        .catch(() => {
+          /* transient API blip — keep the last known roster */
+        });
+    };
+    const interval = setInterval(sync, 10_000);
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      live = false;
+      clearInterval(interval);
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, []);
+
+  if (roster.length === 0) {
     return <p className="muted">No strategies configured yet.</p>;
   }
 
-  const current = strategies.find((s) => s.id === active) ?? strategies[0]!;
+  const current = roster.find((s) => s.id === active) ?? roster[0]!;
 
   return (
     <div>
       <div className="row" role="tablist" style={tabBarStyle}>
-        {strategies.map((s) => {
+        {roster.map((s) => {
           const selected = s.id === current.id;
           return (
             <button
