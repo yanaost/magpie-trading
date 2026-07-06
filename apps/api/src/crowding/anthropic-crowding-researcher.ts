@@ -22,7 +22,10 @@ const WEB_SEARCH_TOOL = {
   name: "web_search",
 } as const;
 
-const RESEARCH_TIMEOUT_MS = 60_000;
+// Web-search grounding legitimately takes minutes (several searches + reasoning),
+// so give the request generous headroom. Combined with streaming below, this
+// avoids the SDK's request-timeout cutting off a real, in-progress research run.
+const RESEARCH_TIMEOUT_MS = 300_000;
 
 const SYSTEM_PROMPT = [
   "You track market sentiment for an automated trading system.",
@@ -63,33 +66,55 @@ export class AnthropicCrowdingResearcher implements CrowdingResearcher {
   }
 
   async research(): Promise<CrowdedTickerEvidence[]> {
-    const message = await this.client.messages.create(
-      {
-        model: this.model,
-        max_tokens: 2048,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content:
-              "List the US equities that are over-recommended / crowded-long right now.",
+    // Stream rather than await a single response: web-search research is a long,
+    // multi-round-trip call, and streaming keeps the connection alive so it isn't
+    // cut off by request timeouts (SDK guidance for long / tool-using requests).
+    const message = await this.client.messages
+      .stream(
+        {
+          model: this.model,
+          // Generous output budget: in the server-tool loop this caps *each*
+          // assistant turn, so the final turn must fit up to 15 tickers with an
+          // evidence sentence each. 2048 truncated that final JSON on thorough
+          // runs (empty/partial text → parse failure); 8192 leaves ample room.
+          max_tokens: 8192,
+          system: SYSTEM_PROMPT,
+          messages: [
+            {
+              role: "user",
+              content:
+                "List the US equities that are over-recommended / crowded-long right now.",
+            },
+          ],
+          tools: [WEB_SEARCH_TOOL],
+          output_config: {
+            format: { type: "json_schema", schema: OUTPUT_SCHEMA },
           },
-        ],
-        tools: [WEB_SEARCH_TOOL],
-        output_config: {
-          format: { type: "json_schema", schema: OUTPUT_SCHEMA },
         },
-      },
-      { timeout: RESEARCH_TIMEOUT_MS },
-    );
+        { timeout: RESEARCH_TIMEOUT_MS },
+      )
+      .finalMessage();
 
     if (message.stop_reason === "refusal") {
       throw new Error("model refused the crowding-research request");
     }
-    const text = message.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
+
+    // The schema-constrained answer is the final text block. Take the last
+    // non-empty one (interim tool-loop narration, if any, precedes it) and
+    // fail loudly on an empty/truncated body rather than throwing a cryptic
+    // `JSON.parse` SyntaxError — research() runs before any DB write, so a throw
+    // here leaves the previous crowded_tickers set intact.
+    const text =
+      message.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text.trim())
+        .filter((t) => t.length > 0)
+        .at(-1) ?? "";
+    if (text.length === 0) {
+      throw new Error(
+        `crowding research returned no answer (stop_reason=${message.stop_reason})`,
+      );
+    }
     const parsed = JSON.parse(text) as { crowded?: CrowdedTickerEvidence[] };
     return parsed.crowded ?? [];
   }
