@@ -664,7 +664,7 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
 ## T2.4 — Crowding filter (strategy #6)
 
 - **Crowding vetoes only NEW-LONG entries.** The over-recommended (crowded)
-  signal is a *long* signal — everyone is already in the trade — so the filter
+  signal is a _long_ signal — everyone is already in the trade — so the filter
   runs after `buildProposal` (side is known) and vetoes only `side === "long"`
   proposals with reason code `CROWDED_TICKER`. Shorts and exits pass untouched.
   Moving `buildProposal` ahead of the crowding + risk gates was the enabling
