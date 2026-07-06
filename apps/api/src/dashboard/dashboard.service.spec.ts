@@ -95,7 +95,7 @@ describe("DashboardService.portfolio", () => {
 
 describe("DashboardService.setStrategy", () => {
   /** A minimal chainable fake over the Drizzle query builder. */
-  function fakeDb(existing: Record<string, unknown> | null) {
+  function fakeDb(existing: Record<string, unknown> | null, closedTrades = 0) {
     const inserted: Array<Record<string, unknown>> = [];
     const updated: Array<Record<string, unknown>> = [];
     const db = {
@@ -119,8 +119,10 @@ describe("DashboardService.setStrategy", () => {
         },
       }),
     };
+    // countClosedTrades() goes through the raw tagged-template client.
+    const sql = vi.fn(async () => [{ n: closedTrades }]);
     return {
-      dbClient: { db, sql: vi.fn() } as unknown as DbClient,
+      dbClient: { db, sql } as unknown as DbClient,
       inserted,
       updated,
     };
@@ -163,5 +165,74 @@ describe("DashboardService.setStrategy", () => {
     const result = await svc.setStrategy("nope", { mode: "APPROVE" });
     expect(result).toBeNull();
     expect(inserted).toHaveLength(0);
+  });
+
+  it("blocks an under-traded promotion and audits the rejection", async () => {
+    const { dbClient, inserted, updated } = fakeDb(
+      {
+        id: "qual-sphb",
+        name: "Q",
+        timeframe: "swing",
+        mode: "WATCH",
+        target: "SIM",
+      },
+      3, // only 3 closed SIM trades
+    );
+    const svc = new DashboardService(dbClient, fakeSimulator([]));
+
+    await expect(
+      svc.setStrategy("qual-sphb", { target: "PAPER", note: "go" }),
+    ).rejects.toMatchObject({ code: "INSUFFICIENT_TRADES" });
+
+    // Row untouched; the refused attempt is audited.
+    expect(updated).toHaveLength(0);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toMatchObject({
+      action: "promotion_rejected",
+      after: { target: "PAPER", code: "INSUFFICIENT_TRADES", closedTrades: 3 },
+    });
+  });
+
+  it("blocks a promotion with no review note", async () => {
+    const { dbClient } = fakeDb(
+      {
+        id: "qual-sphb",
+        name: "Q",
+        timeframe: "swing",
+        mode: "WATCH",
+        target: "SIM",
+      },
+      100,
+    );
+    const svc = new DashboardService(dbClient, fakeSimulator([]));
+    await expect(
+      svc.setStrategy("qual-sphb", { target: "PAPER" }),
+    ).rejects.toMatchObject({ code: "NOTE_REQUIRED" });
+  });
+
+  it("allows a promotion with enough trades and a note", async () => {
+    const { dbClient, updated, inserted } = fakeDb(
+      {
+        id: "qual-sphb",
+        name: "Q",
+        timeframe: "swing",
+        mode: "APPROVE",
+        target: "SIM",
+      },
+      42,
+    );
+    const svc = new DashboardService(dbClient, fakeSimulator([]));
+
+    const result = await svc.setStrategy("qual-sphb", {
+      target: "PAPER",
+      note: "42 clean SIM trades",
+    });
+
+    expect(result).toMatchObject({ target: "PAPER" });
+    expect(updated[0]).toMatchObject({ target: "PAPER" });
+    expect(inserted[0]).toMatchObject({
+      action: "config_change",
+      after: { target: "PAPER", note: "42 clean SIM trades" },
+    });
   });
 });

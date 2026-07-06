@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Query,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import {
   DashboardService,
@@ -16,6 +17,7 @@ import {
   type PositionView,
   type StrategySummary,
 } from "./dashboard.service.js";
+import { PromotionGateError } from "../promotion/promotion-gate.js";
 
 const MODES = ["AUTO", "APPROVE", "WATCH", "OFF"] as const;
 const TARGETS = ["SIM", "PAPER", "LIVE"] as const;
@@ -24,6 +26,8 @@ const TARGETS = ["SIM", "PAPER", "LIVE"] as const;
 interface StrategyPatch {
   mode?: string;
   target?: string;
+  /** Review note — required when promoting the execution target (T2.2). */
+  note?: string;
 }
 
 /** REST endpoints consumed by the dashboard (apps/web). */
@@ -56,12 +60,24 @@ export class DashboardController {
     if (body.mode === undefined && body.target === undefined) {
       throw new BadRequestException("nothing to update (mode or target)");
     }
-    const updated = await this.dashboard.setStrategy(id, {
-      mode: body.mode,
-      target: body.target,
-    });
-    if (!updated) throw new NotFoundException(`unknown strategy: ${id}`);
-    return updated;
+    try {
+      const updated = await this.dashboard.setStrategy(id, {
+        mode: body.mode,
+        target: body.target,
+        note: body.note,
+      });
+      if (!updated) throw new NotFoundException(`unknown strategy: ${id}`);
+      return updated;
+    } catch (err) {
+      // A blocked promotion is a business-rule rejection, not a bad request.
+      if (err instanceof PromotionGateError) {
+        throw new UnprocessableEntityException({
+          code: err.code,
+          message: err.message,
+        });
+      }
+      throw err;
+    }
   }
 
   @Get("positions")

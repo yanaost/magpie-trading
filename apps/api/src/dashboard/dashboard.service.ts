@@ -3,6 +3,10 @@ import { schema, and, desc, eq } from "@magpie/db";
 import { Simulator } from "@magpie/core";
 import { DB_CLIENT, type DbClient } from "../infra/infra.module.js";
 import { SIMULATOR } from "../pipeline/pipeline.providers.js";
+import {
+  evaluatePromotionGate,
+  PromotionGateError,
+} from "../promotion/promotion-gate.js";
 
 export interface StrategySummary {
   id: string;
@@ -97,13 +101,15 @@ export class DashboardService {
 
   /**
    * Update a strategy's operating mode and/or execution target and audit the
-   * change. In Phase 1 any transition is allowed; promotion gates (≥N closed
-   * trades per rung) land in T2.2. Returns the updated summary, or null if the
-   * strategy does not exist.
+   * change. A target *promotion* (SIM→PAPER→LIVE) must clear the promotion gate
+   * (T2.2): ≥{@link PROMOTION_MIN_CLOSED_TRADES} closed trades at the current
+   * rung plus an attached review note; demotions and mode-only changes are
+   * always allowed. Returns the updated summary, or null if the strategy does
+   * not exist. Throws {@link PromotionGateError} on a blocked promotion.
    */
   async setStrategy(
     id: string,
-    change: { mode?: string; target?: string },
+    change: { mode?: string; target?: string; note?: string },
     actor = "user",
   ): Promise<StrategySummary | null> {
     const [before] = await this.dbClient.db
@@ -112,6 +118,37 @@ export class DashboardService {
       .where(eq(schema.strategies.id, id))
       .limit(1);
     if (!before) return null;
+
+    // Gate a target change before touching the row.
+    if (change.target !== undefined && change.target !== before.target) {
+      const closedTrades = await this.countClosedTrades(id, before.target);
+      const decision = evaluatePromotionGate({
+        from: before.target,
+        to: change.target,
+        closedTrades,
+        note: change.note,
+      });
+      if (!decision.allowed) {
+        // "All audited" — record the refused attempt before rejecting.
+        await this.dbClient.db.insert(schema.auditLog).values({
+          entityType: "strategy",
+          entityId: id,
+          action: "promotion_rejected",
+          actor,
+          before: { target: before.target },
+          after: {
+            target: change.target,
+            code: decision.code,
+            reason: decision.reason,
+            closedTrades,
+          },
+        });
+        throw new PromotionGateError(
+          decision.code ?? "INSUFFICIENT_TRADES",
+          decision.reason ?? "promotion rejected",
+        );
+      }
+    }
 
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (change.mode !== undefined) set.mode = change.mode;
@@ -131,6 +168,7 @@ export class DashboardService {
       after: {
         mode: change.mode ?? before.mode,
         target: change.target ?? before.target,
+        ...(change.note ? { note: change.note } : {}),
       },
     });
 
@@ -141,6 +179,21 @@ export class DashboardService {
       mode: change.mode ?? before.mode,
       target: change.target ?? before.target,
     };
+  }
+
+  /** Count closed trades a strategy has completed at a given execution rung. */
+  private async countClosedTrades(
+    strategyId: string,
+    target: string,
+  ): Promise<number> {
+    const rows = await this.dbClient.sql<{ n: number }[]>`
+      select count(*)::int as n
+      from positions
+      where strategy_id = ${strategyId}
+        and target = ${target}
+        and status = 'closed'
+    `;
+    return rows[0]?.n ?? 0;
   }
 
   /** Open SIM positions (live, from the Simulator) with distance-to-stop. */

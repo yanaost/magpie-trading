@@ -7,6 +7,12 @@ import { setStrategy, triggerSynthetic } from "@/lib/browser-api";
 
 const MODES = ["AUTO", "APPROVE", "WATCH", "OFF"];
 const TARGETS = ["SIM", "PAPER", "LIVE"];
+const RUNG: Record<string, number> = { SIM: 0, PAPER: 1, LIVE: 2 };
+
+/** True when moving to `to` is a promotion (a higher-risk rung) from `from`. */
+function isPromotion(from: string, to: string): boolean {
+  return (RUNG[to] ?? 0) > (RUNG[from] ?? 0);
+}
 
 function badgeTone(mode: string): string {
   if (mode === "AUTO") return "var(--up)";
@@ -33,6 +39,7 @@ export default function StrategyControls({
   async function change(patch: {
     mode?: string;
     target?: string;
+    note?: string;
   }): Promise<void> {
     setBusy(true);
     setError(null);
@@ -46,6 +53,25 @@ export default function StrategyControls({
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * Promoting the execution rung (e.g. SIM→PAPER) requires an attached review
+   * note (T2.2); prompt for one before sending. Demotions skip the prompt.
+   */
+  function changeTarget(next: string): void {
+    if (isPromotion(target, next)) {
+      const reason = window.prompt(
+        `Promote ${strategy.name} from ${target} to ${next}.\nAttach a review note (required):`,
+      );
+      if (reason === null || reason.trim().length === 0) {
+        setError("Promotion cancelled — a review note is required.");
+        return;
+      }
+      void change({ target: next, note: reason.trim() });
+      return;
+    }
+    void change({ target: next });
   }
 
   async function trigger(): Promise<void> {
@@ -97,7 +123,7 @@ export default function StrategyControls({
           aria-label={`${strategy.name} target`}
           value={target}
           disabled={busy}
-          onChange={(e) => change({ target: e.target.value })}
+          onChange={(e) => changeTarget(e.target.value)}
           style={selectStyle}
         >
           {TARGETS.map((t) => (

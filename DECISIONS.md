@@ -599,3 +599,34 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
   deliberately excluded from the automated suite. 32 execution unit tests green
   (gateway 8, port 10, recon 6, provider 3, + mapIbStatus); full workspace 115
   api tests + typecheck/eslint/prettier/build all green.
+
+## T2.2 — Promotion gates
+
+- **Ladder is SIM(0) < PAPER(1) < LIVE(2); only upward moves are gated.** A
+  same-rung change (mode-only) and any demotion pass freely — you can always
+  pull risk down. The gate math is a pure function (`evaluatePromotionGate`) so
+  it's unit-tested in isolation (AC "gate math").
+- **A promotion must be earned: ≥30 closed trades at the current rung + a review
+  note.** Threshold `PROMOTION_MIN_CLOSED_TRADES = 30` (overridable per call).
+  Checks run in order: LIVE-lock → note-present → trade-count, each with a stable
+  rejection code (`LIVE_LOCKED` / `NOTE_REQUIRED` / `INSUFFICIENT_TRADES`).
+  Closed trades counted per-rung from `positions` (status='closed', matching
+  `target`), so PAPER trades don't count toward a future PAPER→… promotion's
+  SIM history and vice-versa.
+- **Promotion to LIVE is refused outright (rule 6),** not merely at order time.
+  The T2.1 port already throws `LivePromotionLockedError`; the gate keeps the
+  _config_ consistent by never letting `target` reach LIVE via promotion. (A
+  demotion _from_ LIVE stays allowed in the math, though nothing can be at LIVE.)
+- **Rejections are audited, then surfaced as 422.** A blocked promotion writes an
+  `promotion_rejected` audit row (code + reason + observed trade count) before
+  throwing `PromotionGateError`; the controller maps that to
+  `UnprocessableEntityException` (422, body `{code, message}`) — distinct from
+  the 400s for malformed input and the 404 for an unknown strategy. Successful
+  changes keep the existing `config_change` audit, now including the note.
+- **UI prompts for the note on promotion only.** `strategy-controls.tsx` detects
+  an upward rung change and `window.prompt`s for a required review note before
+  PATCHing; cancelling or leaving it blank aborts client-side. Demotions send
+  immediately. Simplest path over a bespoke modal (noted per the
+  simplest-path-first preference).
+- Full gate green: 132 api tests (promotion 10, dashboard service 9, dashboard
+  controller 4, + existing) + typecheck/eslint/prettier + Next.js build.

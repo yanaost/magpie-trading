@@ -54,7 +54,7 @@ export async function getPendingProposals(): Promise<ProposalView[]> {
 
 export const setStrategy = (
   id: string,
-  change: { mode?: string; target?: string },
+  change: { mode?: string; target?: string; note?: string },
 ): Promise<StrategySummary> =>
   req<StrategySummary>(`/api/strategies/${id}`, {
     method: "PATCH",
