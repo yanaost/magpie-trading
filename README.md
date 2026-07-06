@@ -27,19 +27,43 @@ trading-app/
 
 ## Prerequisites
 
+**To run everything in SIM (the default) — no broker account needed:**
+
 - Node 22 (Node 20.12+ works locally; CI pins 22)
 - pnpm 9 (`corepack enable`)
-- Docker + Docker Compose (for postgres/redis/ib-gateway — Phase 0.2 onward)
+- Docker + Docker Compose (for postgres/redis; the app itself can run on host Node)
+
+**Additionally, to run against the IB _paper_ account (the PAPER rung):**
+
+- An **Interactive Brokers account** with **paper trading enabled** (a `DU…`
+  paper account id). Set `IB_ACCOUNT_ID`, `IB_USERNAME`, `IB_PASSWORD`, and
+  `TRADING_MODE=paper` in `.env` — the credentials are consumed by the
+  `ib-gateway` container, never by app code.
+- **Market-data subscriptions** on that IB account for the symbols you trade
+  (`MARKET_DATA_TICKERS`, default `QUAL,SPHB,SPY`). Without the subscription IB
+  returns delayed/blank quotes and realtime bars won't flow. Live market data is
+  off by default (`MARKET_DATA_ENABLED=false`); set it `true` to open the IB
+  connection and stream bars at boot.
+- The `ib-gateway` container publishes the paper API on port **4002**
+  (`IB_GATEWAY_PORT`); live is 4001 and stays locked (see the ladder below).
+
+SIM uses none of the above — quotes and fills come from the built-in simulator,
+so you can exercise the entire loop with zero broker setup.
 
 ## Getting started
 
 ```bash
 corepack enable
 pnpm install
-cp .env.example .env   # fill in secrets
+cp .env.example .env   # fill in secrets (none required for SIM)
 pnpm -r build
 pnpm -r test
 ```
+
+For the full containerized stack (postgres + redis + ib-gateway + api + web),
+see [`infra/README.md`](./infra/README.md) — it covers `docker compose
+--profile apps up -d`, the IB gateway port mapping, the daily-restart window,
+backups, and the deployment runbook.
 
 ## Scripts
 
@@ -106,8 +130,54 @@ copy the token into `TELEGRAM_BOT_TOKEN`. Get your chat id by messaging the bot
 once and reading `https://api.telegram.org/bot<TOKEN>/getUpdates`
 (`result[].message.chat.id`), or use [@userinfobot](https://t.me/userinfobot).
 
+## The SIM → PAPER → LIVE ladder
+
+Every strategy instance has an **execution target**, and promotion up the ladder
+is deliberate and gated:
+
+| Target    | Fills come from                    | Account risk | How to reach it                                   |
+| --------- | ---------------------------------- | ------------ | ------------------------------------------------- |
+| **SIM**   | the built-in `Simulator` (virtual) | none         | default; set any time                             |
+| **PAPER** | the IB **paper** account (`DU…`)   | fake money   | promote SIM→PAPER once the paper account is wired |
+| **LIVE**  | the IB **live** account            | real money   | **locked in code** — throws `LivePromotionLocked` |
+
+- Set a strategy's target from the dashboard **Strategies** panel or
+  `PATCH /api/strategies/:id {"target":"SIM"|"PAPER"}`. The **promotion gate**
+  classifies each change (promotion / demotion / no-op) and records it.
+- **Risk sizing reads the target's real equity** (A0): SIM sizes against the
+  strategy's virtual sim cash; PAPER sizes against the broker's net liquidation
+  value. So a proposal's risk dollars are always ~1–2% of the account that would
+  actually take the trade, not a fixed constant.
+- `SIM→PAPER→LIVE` — any promotion **to LIVE is refused** regardless of trade
+  count or note (ground rule 6). Unlocking LIVE is a future, manual milestone;
+  there is no runtime flag for it.
+
+## Kill switch
+
+A global stop that blocks **all** new orders across every strategy and target,
+independent of individual modes. It **fails safe**: if its own state store is
+unreachable it reports ACTIVE, so an infra outage stops trading rather than
+letting it run blind.
+
+```bash
+curl -s   localhost:3001/killswitch                              # current state
+curl -X POST   localhost:3001/killswitch \
+     -H 'content-type: application/json' -d '{"reason":"manual stop"}'   # TRIP
+curl -X DELETE localhost:3001/killswitch \
+     -H 'content-type: application/json' -d '{"confirmation":"RE-ARM TRADING"}'  # re-arm
+```
+
+Re-arming requires the exact typed phrase `RE-ARM TRADING` and deliberately does
+**not** restore strategy modes — you re-enable each strategy consciously after
+confirming the cause is resolved. The dashboard exposes the same trip/re-arm
+controls.
+
 ## Status
 
-Phase 1 — Trading loop (T1.9 dashboard v1 complete: mode/target control, dev
-trigger, approvals, live SIM positions, kill switch, signal log, journal). The
-full-loop demo above is verified end-to-end. See `TASKS.md`.
+Phases 0–3 complete (foundation, one strategy end-to-end in SIM, real execution
+path + strategy roster, automation + polish tooling), plus A0 (real per-strategy
+equity for risk sizing). `AUTO+SIM` runs safely with per-strategy caps and
+loss-cooldown demotion; replay/variant tooling and backtest reports are in place;
+the stack is deployable via [`infra/README.md`](./infra/README.md). LIVE remains
+locked. Live PAPER round-trip verification is pending an IB paper account. See
+[`TASKS.md`](./TASKS.md) and [`DECISIONS.md`](./DECISIONS.md).
