@@ -772,3 +772,33 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
 - Full gate green: strategies 53 tests (+22 over T2.5's 31: spike detector +
   exit rules 15, fixtured spike-week replay 7); typecheck/eslint/prettier + all
   package builds + Next.js build + api 142.
+
+## T2.7 — Strategy #7 — Friday→Monday flow
+
+- **Week boundaries come from an injected calendar, not the weekday alone.** A
+  `TradingCalendar(holidays, halfDays)` derives `isWeekCloseSession` /
+  `isWeekOpenSession` by comparing the ISO week of the prev/next _trading_ day,
+  so Good Friday shifts the week-close to Thursday, an MLK Monday shifts the
+  week-open to Tuesday, and the half-day after Thanksgiving is still a valid
+  week-close. Weekday-only logic would misfire on every holiday week. Half-days
+  count as trading days. Calendar-edge tests cover all four cases (AC).
+- **The trending / most-bought list is an injected `TrendingListProvider`** with
+  a static default (same provider pattern as T2.5/T2.6). The live source
+  (retail most-bought feed) is documented-and-deferred — the strategy is
+  deterministic offline and the source swaps in without touching domain logic.
+- **"Monday-open weakness ⇒ auto-cancel" is modeled two ways, both real.** The
+  _pre-fill_ cancel is structural: entry is a **buy-stop above Friday's high**, so
+  a weak Monday simply never triggers the bracket — no order management needed.
+  The _post-fill_ cancel is a `manage()`-level exit (`flowExitDecision` rule 1)
+  that flattens if Monday opens below Friday's close by `weakOpenPct`. Priority
+  order: weak-open auto-cancel → mid-week strength target → end-of-week time
+  stop; weak-open outranks a same-session strength spike (tested).
+- **`priorWeekClose` is derived from the candle series via the calendar**, not
+  persisted entry state: `scan` walks back for the most recent prior
+  week-close session's close. Keeps `manage` a pure function of cached market
+  data (sync-manage contract) with no cross-cycle position bookkeeping.
+- Seed roster row stays `recommendedMode: APPROVE` — a confirmation-gated
+  momentum trade, same posture as hype-momentum.
+- Full gate green: strategies 71 tests (+18 over T2.6's 53: calendar/week
+  helpers 7, flow signalling + Monday auto-cancel + exit rules 11);
+  typecheck/eslint/prettier + all package builds + Next.js build + api 142.

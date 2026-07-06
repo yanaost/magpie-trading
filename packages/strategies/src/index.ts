@@ -10,6 +10,10 @@ export * from "./earnings-fade/earnings-fade.strategy.js";
 export * from "./hype-momentum/candidates.js";
 export * from "./hype-momentum/spike-detector.js";
 export * from "./hype-momentum/hype-momentum.strategy.js";
+export * from "./friday-monday/trading-week.js";
+export * from "./friday-monday/trending-list.js";
+export * from "./friday-monday/flow-detector.js";
+export * from "./friday-monday/friday-monday.strategy.js";
 export * from "./registry.js";
 
 import type { Strategy } from "@magpie/core";
