@@ -19,7 +19,8 @@ export const ROSTER: readonly SeedStrategy[] = [
     id: "earnings-fade",
     name: "Earnings fade",
     timeframe: "swing",
-    recommendedMode: "APPROVE",
+    // Long-only default is a do-not-buy filter (T2.5) — WATCH-first.
+    recommendedMode: "WATCH",
   },
   {
     id: "hype-momentum",

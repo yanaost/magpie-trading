@@ -4,6 +4,9 @@
  */
 export * from "./qual-sphb/indicators.js";
 export * from "./qual-sphb/qual-sphb.strategy.js";
+export * from "./earnings-fade/calendar.js";
+export * from "./earnings-fade/stall-detector.js";
+export * from "./earnings-fade/earnings-fade.strategy.js";
 export * from "./registry.js";
 
 import type { Strategy } from "@magpie/core";

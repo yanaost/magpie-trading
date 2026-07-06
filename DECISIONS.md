@@ -698,3 +698,41 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
 - Full gate green: api 142 tests (+9: crowding refresh 4, filter 2, pipeline
   crowd-veto + suggest-stops, dev refresh 2); typecheck/eslint/prettier + all
   package builds + Next.js build.
+
+## T2.5 — Strategy #1 — Earnings fade
+
+- **The earnings calendar is a strategy-construction dependency, not new
+  pipeline infra.** `CalendarProvider` (`recentEarnings(asOf)`) is injected into
+  `EarningsFadeStrategy`; the default `StaticCalendarProvider` is empty in prod
+  and seeded in tests. This keeps the strategy self-contained and fully
+  deterministic under fixtures — no new DB table, no clock, no I/O in the domain
+  package. Same shape as the crowding researcher (interface + null/static default).
+- **Source choice (documented per build note): Financial Modeling Prep earnings
+  calendar** (free tier, `/api/v3/earning_calendar`), filtered to a configurable
+  retail-favourites watchlist. The live FMP adapter + nightly wiring are deferred
+  (document-and-defer): the AC is fixture/dry-run driven, the strategy consumes
+  the calendar purely through its injected provider, and adding a fetch adapter is
+  a self-contained follow-up that needs no changes to the strategy. Simplest path
+  first — ship the deterministic core now, wire the network source when scanning
+  goes live.
+- **Detector is pure OHLC math (`detectPostEarningsStall`).** The setup: a genuine
+  miss/guide-down punishes the stock on the reaction session, then a dip-buy bounce
+  over the next 2–3 sessions _stalls below the reaction-day high and closes red_.
+  A qualifying stall bar (a) pokes above the prior + reaction close (a real bounce
+  attempt), (b) stays capped below the post-earnings high, (c) closes red. Straight
+  continuation-down days and bounces that reclaim the high both return null.
+  Fixture-driven tests cover both trigger and every rejection path.
+- **Modelled as `side:"short"` because the platform models only long/short
+  equity.** The real expression of the fade is long puts (options-gated); since the
+  domain has no options, `buildProposal` frames it as an equity short with the stop
+  just above the reaction high and the target a measured move below the stall close,
+  and writes the do-not-buy / long-puts framing into the exit-plan rules. Seeded
+  `recommendedMode: WATCH` — in a long-only account this is primarily a
+  do-not-buy filter, journalling "don't buy this dip" rather than trading.
+- **LLM gate confirms the fundamental, never the numbers.** `llmPrompt` (web-search
+  enabled) asks Claude to verify the report was an actual miss/guide-down — not a
+  beat that merely dipped — and answer proceed/veto; all prices/levels come from the
+  pure detector.
+- Full gate green: strategies 31 tests (+13 over the pre-T2.5 baseline of 18:
+  stall detector 7, earnings-fade strategy 6); typecheck/eslint/prettier + all
+  package builds + Next.js build + api 142.
