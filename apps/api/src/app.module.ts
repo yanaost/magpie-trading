@@ -12,6 +12,7 @@ import { LlmModule } from "./llm/llm.module.js";
 import { PipelineModule } from "./pipeline/pipeline.module.js";
 import { ApprovalsModule } from "./approvals/approvals.module.js";
 import { BacktestModule } from "./backtest/backtest.module.js";
+import { UptimeModule } from "./uptime/uptime.module.js";
 import { DevModule } from "./dev/dev.module.js";
 
 /**
@@ -42,6 +43,7 @@ import { DevModule } from "./dev/dev.module.js";
     PipelineModule,
     ApprovalsModule,
     BacktestModule,
+    UptimeModule,
     DevModule,
   ],
 })

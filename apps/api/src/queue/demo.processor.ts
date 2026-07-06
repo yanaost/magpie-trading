@@ -2,6 +2,7 @@ import { InjectQueue, Processor, WorkerHost } from "@nestjs/bullmq";
 import { Inject, Logger, type OnModuleInit } from "@nestjs/common";
 import { Queue, type Job } from "bullmq";
 import { APP_CONFIG, type AppConfig } from "../config/env.schema.js";
+import { WorkerHeartbeat } from "../uptime/worker-heartbeat.js";
 
 export const DEMO_QUEUE = "demo";
 const SCHEDULER_ID = "demo-heartbeat";
@@ -14,8 +15,14 @@ const SCHEDULER_ID = "demo-heartbeat";
 export class DemoProcessor extends WorkerHost {
   private readonly logger = new Logger("DemoProcessor");
 
+  constructor(private readonly heartbeat: WorkerHeartbeat) {
+    super();
+  }
+
   override async process(job: Job): Promise<void> {
     this.logger.log(`demo heartbeat tick (job ${job.id}) — worker alive`);
+    // Bump the shared liveness key the uptime monitor watches (T3.6).
+    await this.heartbeat.beat();
   }
 }
 

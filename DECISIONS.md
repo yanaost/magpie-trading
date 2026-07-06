@@ -1010,3 +1010,45 @@ deps)` looks the strategy up in `VARIANT_BUILDERS` and constructs it with the
   reports — 30-min more trades/executed, differing net P&L — both flagged
   `replayStubbed` with `stubbedFraction===1`. Gate green: typecheck/eslint/prettier
   - full suite clean (db 5, core 113, strategies 144, api 169).
+
+## T3.6 — Ops hardening
+
+- **Tailscale-first, Caddy-optional.** The dashboard drives real (paper/live)
+  orders, so the default posture is a private Tailnet with nothing exposed to
+  `0.0.0.0` — the compose ports already bind `127.0.0.1`. `infra/Caddyfile`
+  (auto-TLS + mandatory basic-auth) is documented for the multi-user / public-
+  hostname case only. Least public attack surface for a single-operator box.
+- **Backups: encrypted, off-box, keyless-in-argv.** `infra/backup/pg_backup.sh`
+  pipes `pg_dump -Fc | gzip | openssl aes-256-cbc -pbkdf2` to a timestamped
+  artifact and optionally `rclone`/`scp`s it off the VPS. The passphrase comes
+  from `BACKUP_PASSPHRASE_FILE` (root-only) via `-pass env:` so it never appears
+  in `ps`. `restore.sh` reverses it, with `DROP_AND_CREATE` for a clean scratch
+  target. openssl (not age/gpg) because it's already on every box.
+- **Restore drill performed, not just documented (AC).** Ran the full path
+  against a local Postgres 16: seeded a 3-row table into `trading`, backed it up
+  (6432-byte encrypted artifact), restored into a fresh `trading_restore_drill`,
+  verified all 3 rows recovered intact, then dropped the scratch db. Evidence in
+  `infra/README.md` → "Restore drill".
+- **Edge-triggered alerting (AC).** `UptimeMonitorService.tick()` evaluates the
+  active alert set (`gateway-down` / `worker-stalled` / `queue-backlog`) and
+  diffs it against the currently-firing set, so a persistent outage pages once on
+  the way in and once on recovery — never every tick. This is exactly what "alert
+  fires when the gateway container is stopped" needs: one message on stop, one on
+  restart. The decision logic is a pure function (`evaluateAlerts` + `diffAlerts`)
+  so it's testable with no infra.
+- **Worker liveness via a shared Redis heartbeat.** Workers bump
+  `uptime:worker:heartbeat` (Redis, not in-process) on every job, so "stalled"
+  means "no work is happening anywhere", surviving the api and worker being
+  separate processes. A `null` age (no beat yet) is only treated as stalled after
+  the monitor has seen at least one real beat — avoids a false alert on cold boot.
+- **Feature-gated + fail-open.** The whole monitor is off unless
+  `UPTIME_MONITOR_ENABLED=true`; the scheduler simply never arms otherwise (dev/
+  CI/SIM stay silent). `tick()` swallows probe and sink failures — a monitor that
+  dies on the first Redis hiccup is worse than useless. The Telegram sink no-ops
+  without a bot token, same as the proposal notifier.
+- **AC test.** `uptime-monitor.spec.ts` drives the real service against a
+  scripted probe + spy sink: gateway-down fires exactly once and stays quiet
+  while still down, then emits exactly one recovery; worker-stalled and
+  queue-backlog fire independently; a cold-boot null heartbeat does not alert; a
+  throwing probe doesn't crash the loop. Gate green: api 169 → 173,
+  typecheck/eslint/prettier + full suite clean.

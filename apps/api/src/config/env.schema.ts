@@ -61,6 +61,25 @@ export const envSchema = z.object({
   PIPELINE_EXPIRY_SWEEP_MS: z.coerce.number().int().positive().default(60_000),
 
   /**
+   * Uptime monitor (T3.6). When enabled, a background loop probes gateway
+   * reachability, worker liveness, and queue backlog, and pushes a Telegram
+   * alert on the *transition* into (and out of) an unhealthy state.
+   */
+  UPTIME_MONITOR_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  /** Uptime probe cadence (ms). Default 60s. */
+  UPTIME_CHECK_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  /** Queue backlog alert threshold: waiting+delayed jobs above this fire. */
+  UPTIME_QUEUE_BACKLOG_MAX: z.coerce.number().int().positive().default(100),
+  /**
+   * Worker-stalled threshold (ms). If no worker heartbeat has landed within this
+   * window, the worker is considered stalled. Default 3× the demo heartbeat.
+   */
+  UPTIME_WORKER_STALE_MS: z.coerce.number().int().positive().default(90_000),
+
+  /**
    * Replay engine (T3.1). When enabled, the API binds the deterministic replay
    * clock/analyst/context provider instead of the live ones, so a backtest runs
    * the same money path against historical candles.

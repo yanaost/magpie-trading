@@ -1,6 +1,7 @@
 import { BullModule } from "@nestjs/bullmq";
 import { Module } from "@nestjs/common";
 import { APP_CONFIG, type AppConfig } from "../config/env.schema.js";
+import { WorkerHeartbeat } from "../uptime/worker-heartbeat.js";
 import { DemoProcessor, DemoScheduler, DEMO_QUEUE } from "./demo.processor.js";
 
 /**
@@ -29,7 +30,7 @@ export const BullRootModule = BullModule.forRootAsync({
  */
 @Module({
   imports: [BullRootModule, BullModule.registerQueue({ name: DEMO_QUEUE })],
-  providers: [DemoProcessor, DemoScheduler],
-  exports: [BullRootModule],
+  providers: [DemoProcessor, DemoScheduler, WorkerHeartbeat],
+  exports: [BullRootModule, WorkerHeartbeat],
 })
 export class QueueModule {}

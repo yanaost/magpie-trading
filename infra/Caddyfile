@@ -1,0 +1,65 @@
+# Caddy reverse proxy + automatic TLS for the trading dashboard (T3.6).
+#
+# Caddy terminates HTTPS (auto-provisioned Let's Encrypt certs) and proxies to
+# the web + api containers on the internal compose network. Only Caddy binds
+# host :80/:443; api (:3001) and web (:3000) stay on 127.0.0.1 / trading-net and
+# are never exposed directly.
+#
+# DEPLOY MODES — pick one:
+#
+#   A. Tailscale-only (recommended for a single operator). Do NOT expose 80/443
+#      to the public internet at all; reach the box over its Tailnet. Use the
+#      `magpie.<your-tailnet>.ts.net` block with Caddy's tailscale cert source,
+#      or just skip Caddy and hit http://<tailscale-ip>:3000. Zero public
+#      attack surface — the preferred posture for a personal trading box.
+#
+#   B. Public hostname + Let's Encrypt. Point an A record at the VPS, set
+#      $SITE_ADDRESS + $ACME_EMAIL, and open 80/443. Basic-auth is mandatory
+#      here — the dashboard drives real (paper/live) orders.
+#
+# Run:  caddy run --config /etc/caddy/Caddyfile
+# Env:  SITE_ADDRESS (e.g. magpie.example.com), ACME_EMAIL, DASH_USER, DASH_HASH
+#       (bcrypt hash from `caddy hash-password`).
+
+{
+	email {$ACME_EMAIL}
+	# Uncomment to test against staging before hitting rate limits:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Gate the whole dashboard behind basic-auth. The dashboard can place
+	# paper/live orders, so it must never be world-open even over TLS.
+	basic_auth {
+		{$DASH_USER} {$DASH_HASH}
+	}
+
+	# REST + WebSocket API. Caddy proxies Upgrade requests transparently, so the
+	# live status socket works without extra config.
+	handle /api/* {
+		reverse_proxy api:3001
+	}
+	handle /healthz {
+		reverse_proxy api:3001
+	}
+	handle /proposals* {
+		reverse_proxy api:3001
+	}
+	handle /killswitch* {
+		reverse_proxy api:3001
+	}
+
+	# Everything else → the Next.js dashboard.
+	handle {
+		reverse_proxy web:3000
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+}
