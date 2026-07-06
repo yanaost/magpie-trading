@@ -1,8 +1,14 @@
 import "reflect-metadata";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { config as loadDotenv } from "dotenv";
 
-// Load .env from the repo root before anything reads process.env.
-loadDotenv();
+// Load .env from the repo root before anything reads process.env. Resolve the
+// path from this module's location (apps/api/{src,dist}) rather than the cwd,
+// so `pnpm --filter @magpie/api dev` (cwd = apps/api) still finds the root file.
+loadDotenv({
+  path: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env"),
+});
 
 import { NestFactory } from "@nestjs/core";
 import { Logger as PinoLogger } from "nestjs-pino";

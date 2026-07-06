@@ -7,10 +7,18 @@
  *
  * Usage: `DATABASE_URL=... pnpm --filter @magpie/db db:seed`
  */
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+import { config as loadDotenv } from "dotenv";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { strategies } from "./schema.js";
 import { ROSTER, buildSeedRows } from "./seed-data.js";
+
+// Load the repo-root .env so `pnpm db:seed` works without exporting env by hand.
+loadDotenv({
+  path: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env"),
+});
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;

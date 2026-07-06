@@ -7,12 +7,16 @@
  */
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { config as loadDotenv } from "dotenv";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+// Load the repo-root .env so `pnpm db:migrate` works without exporting env by
+// hand. Resolved from this module (packages/db/{src,dist}), not the cwd.
+loadDotenv({ path: resolve(HERE, "../../../.env") });
 const MIGRATIONS_DIR = resolve(HERE, "../migrations");
 
 /**

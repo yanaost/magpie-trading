@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsc -p tsconfig.json && (tsc -w -p tsconfig.json --preserveWatchOutput & node --watch dist/main.js)",
     "start": "node dist/main.js",
     "ingest:backfill": "node dist/ingest/backfill.js",
     "ingest:backfill:dev": "tsx src/ingest/backfill.ts",
