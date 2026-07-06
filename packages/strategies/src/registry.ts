@@ -13,6 +13,7 @@
 import type { Strategy } from "@magpie/core";
 import { QualSphbStrategy } from "./qual-sphb/qual-sphb.strategy.js";
 import { EarningsFadeStrategy } from "./earnings-fade/earnings-fade.strategy.js";
+import { HypeMomentumStrategy } from "./hype-momentum/hype-momentum.strategy.js";
 
 /** Constructs a fresh strategy instance. */
 export type StrategyFactory = () => Strategy;
@@ -24,6 +25,7 @@ export type StrategyFactory = () => Strategy;
 export const STRATEGY_FACTORIES: readonly StrategyFactory[] = [
   () => new QualSphbStrategy(),
   () => new EarningsFadeStrategy(),
+  () => new HypeMomentumStrategy(),
 ];
 
 /** Instantiate all registered strategies. */

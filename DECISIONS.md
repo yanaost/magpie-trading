@@ -736,3 +736,39 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
 - Full gate green: strategies 31 tests (+13 over the pre-T2.5 baseline of 18:
   stall detector 7, earnings-fade strategy 6); typecheck/eslint/prettier + all
   package builds + Next.js build + api 142.
+
+## T2.6 — Strategy #2 — Hype momentum
+
+- **Two injected data sources, both static by default.** `HypeCandidateProvider`
+  (`candidates(asOf)`) supplies the trending / most-bought / unusual-volume
+  watchlist to scan; `EarningsSchedule` (`nextEarningsDate(ticker, asOf)`) supplies
+  forward-looking earnings dates for the hard earnings-block. Kept separate from the
+  T2.5 calendar because that returns _recent_ reporters while the block needs
+  _upcoming_ dates. Both default to inert static impls so the strategy is
+  deterministic offline; live feeds are a self-contained follow-up (same
+  document-and-defer as T2.5's FMP calendar).
+- **Fires once, on the fresh breakout bar (day 1).** `detectHypeSpike` only inspects
+  the last bar: an up-day whose volume ≥ `volSpikeMult`× (default 2.5) the 20-day
+  average and whose close clears the prior-20-day high. Firing solely on the last bar
+  makes it a once-per-spike trigger (QUAL/SPHB fresh-cross analog) — no duplicate
+  signals on day 2+ while the move persists. The spec's "day 1–2 of spike" is about
+  when it's OK to _enter_; the signal itself is day-1.
+- **Exit logic is a pure, priority-ordered function (`hypeExitDecision`).** Extracted
+  from `manage` so every rule is unit-testable without a MarketContext (AC:
+  "exit-rule unit tests incl. the earnings-block"). Priority: (1) HARD exit before
+  any upcoming earnings date within the block window (default 3 days) — never hold a
+  hype name into the print; (2) momentum stall — first heavy-volume red day
+  (distribution); (3) momentum stall — a lower high that rolls over; (4) written
+  exit — close below the 5-day MA. `scan` caches a `HypeView` per candidate (for
+  _every_ inspected ticker, not just those that signalled) so `manage` reads it
+  synchronously, same sync-manage contract as the other strategies.
+- **"Half at +15%" is the bracket target; the rest lives in manage.** The domain
+  models a single take-profit price, so the proposal target = entry·1.15 (the first
+  half) and the exit-plan rules spell out the remainder rules (5-day-MA break,
+  stall, earnings-block) that `manage` enforces on the balance.
+- **LLM gate confirms catalyst + early-stage, never the numbers.** `llmPrompt`
+  (web-search) asks Claude to verify a real, fresh catalyst and that the move is
+  early-stage — not a late/parabolic blow-off — and answer proceed/veto.
+- Full gate green: strategies 53 tests (+22 over T2.5's 31: spike detector +
+  exit rules 15, fixtured spike-week replay 7); typecheck/eslint/prettier + all
+  package builds + Next.js build + api 142.
