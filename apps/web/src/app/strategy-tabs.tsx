@@ -3,13 +3,14 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import type {
+  BacktestRunView,
   JournalView,
   PerformanceStats,
   PerformanceView,
   PositionView,
   StrategySummary,
 } from "@/lib/api";
-import { getPerformance } from "@/lib/browser-api";
+import { getBacktests, getPerformance } from "@/lib/browser-api";
 import StrategyControls from "./strategy-controls";
 
 const TARGETS = ["SIM", "PAPER", "LIVE"] as const;
@@ -100,6 +101,8 @@ function StrategyPanel({
       <h3 style={sectionStyle}>Performance</h3>
       <Performance strategyId={strategy.id} />
 
+      <VariantBacktests strategyId={strategy.id} />
+
       <h3 style={sectionStyle}>Open positions</h3>
       {positions.length === 0 ? (
         <p className="muted">No open positions.</p>
@@ -180,6 +183,137 @@ function Performance({ strategyId }: { strategyId: string }): ReactNode {
         <TargetCard key={t} target={t} stats={perf.byTarget[t]} />
       ))}
     </div>
+  );
+}
+
+/**
+ * Variant backtest comparison (T3.5, §4.4). Shows one row per persisted variant
+ * run — trades, win rate, avg R, max drawdown, net P&L — so two wait-time
+ * variants can be compared side by side. Any run whose LLM analysis was
+ * synthesized carries a visible `REPLAY_STUBBED` badge: backtests are
+ * directional evidence only. The section hides itself for strategies that have
+ * never been backtested (most don't support variants).
+ */
+function VariantBacktests({ strategyId }: { strategyId: string }): ReactNode {
+  const [runs, setRuns] = useState<BacktestRunView[] | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    setRuns(null);
+    getBacktests(strategyId)
+      .then((r) => {
+        if (live) setRuns(r);
+      })
+      .catch(() => {
+        if (live) setRuns([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [strategyId]);
+
+  if (!runs || runs.length === 0) return null;
+
+  // Newest run per variant instance, ordered by wait so 30 sits above 60.
+  const latest = new Map<string, BacktestRunView>();
+  for (const run of runs) {
+    if (!latest.has(run.instanceId)) latest.set(run.instanceId, run);
+  }
+  const rows = [...latest.values()].sort((a, b) =>
+    a.instanceId.localeCompare(b.instanceId),
+  );
+  const anyStubbed = rows.some((r) => r.replayStubbed);
+
+  return (
+    <>
+      <h3 style={sectionStyle}>
+        Variant backtests {anyStubbed ? <ReplayStubbedBadge /> : null}
+      </h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Variant</th>
+            <th>Window</th>
+            <th>Trades</th>
+            <th>Win rate</th>
+            <th>Avg R</th>
+            <th>Max DD</th>
+            <th>Net P&amp;L</th>
+            <th>LLM</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((run) => {
+            const p = run.report.performance;
+            return (
+              <tr key={run.id}>
+                <td>{run.label}</td>
+                <td className="muted" style={{ fontSize: "0.72rem" }}>
+                  {run.from.slice(0, 10)} → {run.to.slice(0, 10)}
+                </td>
+                <td>{p.trades}</td>
+                <td>{(p.winRate * 100).toFixed(0)}%</td>
+                <td>{p.avgR.toFixed(2)}</td>
+                <td>${p.maxDrawdown.toLocaleString()}</td>
+                <td
+                  style={{
+                    color: p.totalPnl >= 0 ? "var(--up)" : "var(--down)",
+                  }}
+                >
+                  ${p.totalPnl.toLocaleString()}
+                </td>
+                <td>
+                  {run.replayStubbed ? (
+                    <span
+                      className="muted"
+                      title={`${run.report.stubbing.stubbed}/${run.report.stubbing.analyses} analyses stubbed`}
+                      style={{ fontSize: "0.72rem" }}
+                    >
+                      stubbed{" "}
+                      {(run.report.stubbing.stubbedFraction * 100).toFixed(0)}%
+                    </span>
+                  ) : (
+                    <span className="muted" style={{ fontSize: "0.72rem" }}>
+                      cached
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {anyStubbed ? (
+        <p
+          className="muted"
+          style={{ margin: "0.4rem 0 0", fontSize: "0.72rem" }}
+        >
+          REPLAY_STUBBED — some LLM verdicts were synthesized (no cached
+          historical analysis). Treat as directional; confirm on
+          replay-with-cache or live-sim before promoting.
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+function ReplayStubbedBadge(): ReactNode {
+  return (
+    <span
+      style={{
+        marginLeft: "0.5rem",
+        padding: "0.05rem 0.4rem",
+        borderRadius: "6px",
+        border: "1px solid var(--down)",
+        color: "var(--down)",
+        fontSize: "0.62rem",
+        fontWeight: 600,
+        letterSpacing: "0.03em",
+        verticalAlign: "middle",
+      }}
+    >
+      REPLAY_STUBBED
+    </span>
   );
 }
 

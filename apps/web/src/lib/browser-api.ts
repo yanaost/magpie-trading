@@ -5,6 +5,7 @@
  * the socket.
  */
 import type {
+  BacktestRunView,
   JournalView,
   KillSwitchState,
   PerformanceView,
@@ -50,6 +51,26 @@ export const getSignals = (strategyId?: string): Promise<JournalView[]> =>
 export const getPerformance = (strategyId: string): Promise<PerformanceView> =>
   req<PerformanceView>(
     `/api/strategies/${encodeURIComponent(strategyId)}/performance`,
+  );
+
+export const getBacktests = (strategyId: string): Promise<BacktestRunView[]> =>
+  req<BacktestRunView[]>(
+    `/api/strategies/${encodeURIComponent(strategyId)}/backtests`,
+  );
+
+export const runBacktests = (
+  strategyId: string,
+  body: {
+    from: string;
+    to: string;
+    timeframe?: string;
+    waits?: number[];
+    gappers?: unknown[];
+  },
+): Promise<BacktestRunView[]> =>
+  req<BacktestRunView[]>(
+    `/api/strategies/${encodeURIComponent(strategyId)}/backtests`,
+    { method: "POST", body: JSON.stringify(body) },
   );
 
 export const getKillSwitch = (): Promise<KillSwitchState> =>

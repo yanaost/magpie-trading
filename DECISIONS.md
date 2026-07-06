@@ -969,3 +969,44 @@ unit-testable with fakes (no DB, no Nest DI).
   2 disables the cooldown and asserts the daily cap blocks entries past the limit
   while the strategy stays AUTO. Gate green: core 94 → 105, api 166 → 168;
   `auto-governor.ts` 100% coverage; typecheck/eslint/prettier + full suite clean.
+
+## T3.5 — Variants + backtest reports
+
+- **Variant model.** A `StrategyVariantSpec` is `{strategyId, instanceId, label,
+params}`. `snapbackWaitVariants([30,60])` builds the two canonical wait-time
+  variants (`snapback:wait30` / `snapback:wait60`). `buildVariantStrategy(spec,
+deps)` looks the strategy up in `VARIANT_BUILDERS` and constructs it with the
+  spec's param overrides — only strategies in that registry support variants
+  (`supportsVariants`), the rest are single-config.
+- **Screener injection.** Snapback's universe is pre-market gappers, which aren't
+  in the `candles` model (market cap / pre-market price aren't stored). The
+  variant builder takes an injectable `premarketScreener`, so a backtest seeds a
+  `StaticPremarketScreener(gappers)`. With no gappers the strategy has no
+  universe and honestly reports zero trades — deriving historical gappers from a
+  data feed is a known follow-up, not a silent stub.
+- **Backtest ≡ live.** Each variant runs through the _real_ `PipelineService`
+  over the _real_ `ReplayEngine` + `Simulator`, with a point-in-time
+  `ReplayMarketContextProvider` capped at the replay clock — identical wiring to
+  a live scan. Persistence/notify ports are no-ops (a backtest must never write
+  signals/proposals/journal rows into live tables); crowding and kill-switch are
+  inert. No governor is wired, so `reconcileAutoResults` early-returns and closed
+  trades stay buffered until the final `drainClosedTrades(strategyId)`.
+- **REPLAY_STUBBED caveat.** The LLM step uses `ReplayLlmAnalyst` over a
+  `NullAnalysisCache` (always miss → synthesized verdict), so every analysis is
+  replay-stubbed. `StubbingCountingAnalyst` counts total vs. stubbed; the report
+  carries `stubbing` + a `replayStubbed` flag. The variant-comparison tab shows a
+  visible `REPLAY_STUBBED` badge and a per-row stubbed-% whenever any analysis was
+  synthesized — backtests are directional evidence only.
+- **Persistence.** `backtest_runs` (migration `0003`) stores one row per variant
+  run — params, window, bars, the full `BacktestReport` JSON, and `replayStubbed`
+  — indexed by `(strategy_id, instance_id)`. `GET /api/strategies/:id/backtests`
+  lists newest-first; `POST` triggers the 30 vs 60-min comparison over a window
+  with caller-supplied gappers.
+- **AC — integration test.** `backtest-runner.spec.ts` runs the real snapback 30
+  vs 60-min variants over 12 weekly synthetic sessions (168 bars) through the real
+  ReplayEngine + Simulator + RiskManager. The session is engineered so the 30-min
+  wait fires the reclaim setup twice and the 60-min once (an intervening dip below
+  the opening range blinds the longer wait), producing comparable but differing
+  reports — 30-min more trades/executed, differing net P&L — both flagged
+  `replayStubbed` with `stubbedFraction===1`. Gate green: typecheck/eslint/prettier
+  - full suite clean (db 5, core 113, strategies 144, api 169).

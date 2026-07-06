@@ -394,3 +394,31 @@ export const candles = pgTable(
   },
   (t) => [primaryKey({ columns: [t.ticker, t.timeframe, t.ts] })],
 );
+
+/**
+ * backtest_runs — one persisted §4.4 backtest report per strategy variant
+ * (T3.5). A variant (`instanceId`, e.g. `snapback:wait30`) is scored over a
+ * window and the whole report — performance, per-rule veto stats, and the
+ * stubbing caveat — is stored as JSON so the variant-comparison tab can render
+ * comparable rows without re-running. `replayStubbed` is denormalised out of the
+ * report so the `REPLAY_STUBBED` caveat is filterable/visible at a glance.
+ */
+export const backtestRuns = pgTable(
+  "backtest_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    strategyId: text("strategy_id").notNull(),
+    instanceId: text("instance_id").notNull(), // e.g. "snapback:wait30"
+    label: text("label").notNull(), // e.g. "30-min wait"
+    params: jsonb("params").$type<Record<string, unknown>>().notNull(),
+    fromTs: timestamp("from_ts", { withTimezone: true }).notNull(),
+    toTs: timestamp("to_ts", { withTimezone: true }).notNull(),
+    bars: integer("bars").notNull(),
+    // Whole BacktestReport (performance + vetoStats + stubbing), as produced by
+    // buildBacktestReport — the UI reads it verbatim.
+    report: jsonb("report").$type<Record<string, unknown>>().notNull(),
+    replayStubbed: boolean("replay_stubbed").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("backtest_runs_strategy_idx").on(t.strategyId, t.instanceId)],
+);

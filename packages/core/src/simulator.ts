@@ -155,6 +155,10 @@ export interface SimClosedTrade {
   readonly side: Side;
   /** Shares/contracts closed. */
   readonly qty: number;
+  /** Average entry price (for R-multiple reporting); undefined if never filled. */
+  readonly entryPrice?: number;
+  /** Protective stop at entry (for R-multiple reporting). */
+  readonly stopPrice: number;
   /** Realized P&L for the trade, net of commissions (USD). */
   readonly realizedPnl: number;
   /** When the trade closed. */
@@ -411,6 +415,8 @@ export class Simulator implements ExecutionPort {
       ticker: b.ticker,
       side: b.side,
       qty: b.qty,
+      entryPrice: b.entryPrice,
+      stopPrice: b.stopPrice,
       realizedPnl: b.realizedPnl,
       closedAt: ts,
     });

@@ -25,6 +25,7 @@ export * from "./risk-manager.js";
 export * from "./auto-governor.js";
 export * from "./simulator.js";
 export * from "./performance.js";
+export * from "./backtest-report.js";
 
 /** Semantic version of the core domain contract. */
 export const CORE_VERSION = "0.1.0" as const;

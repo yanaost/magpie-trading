@@ -87,6 +87,45 @@ export interface PerformanceView {
   byTarget: Record<string, PerformanceStats>;
 }
 
+export interface VetoStats {
+  signals: number;
+  executed: number;
+  proposed: number;
+  watched: number;
+  vetoedByLlm: number;
+  vetoedByCrowding: number;
+  riskRejected: number;
+  autoCapped: number;
+}
+
+export interface StubbingCaveat {
+  analyses: number;
+  stubbed: number;
+  stubbedFraction: number;
+}
+
+export interface BacktestReport {
+  performance: PerformanceStats;
+  vetoStats: VetoStats;
+  stubbing: StubbingCaveat;
+  replayStubbed: boolean;
+}
+
+/** A persisted variant backtest run (T3.5). */
+export interface BacktestRunView {
+  id: string;
+  strategyId: string;
+  instanceId: string;
+  label: string;
+  params: Record<string, unknown>;
+  from: string;
+  to: string;
+  bars: number;
+  report: BacktestReport;
+  replayStubbed: boolean;
+  createdAt: string;
+}
+
 export interface KillSwitchState {
   active: boolean;
   reason: string | null;
@@ -119,6 +158,12 @@ export function fetchPositions(strategyId?: string): Promise<PositionView[]> {
 export function fetchPerformance(strategyId: string): Promise<PerformanceView> {
   return apiGet<PerformanceView>(
     `/api/strategies/${encodeURIComponent(strategyId)}/performance`,
+  );
+}
+
+export function fetchBacktests(strategyId: string): Promise<BacktestRunView[]> {
+  return apiGet<BacktestRunView[]>(
+    `/api/strategies/${encodeURIComponent(strategyId)}/backtests`,
   );
 }
 

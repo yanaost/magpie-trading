@@ -11,6 +11,7 @@ import { KillSwitchModule } from "./killswitch/killswitch.module.js";
 import { LlmModule } from "./llm/llm.module.js";
 import { PipelineModule } from "./pipeline/pipeline.module.js";
 import { ApprovalsModule } from "./approvals/approvals.module.js";
+import { BacktestModule } from "./backtest/backtest.module.js";
 import { DevModule } from "./dev/dev.module.js";
 
 /**
@@ -40,6 +41,7 @@ import { DevModule } from "./dev/dev.module.js";
     LlmModule,
     PipelineModule,
     ApprovalsModule,
+    BacktestModule,
     DevModule,
   ],
 })
