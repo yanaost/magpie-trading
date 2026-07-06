@@ -17,6 +17,9 @@ export * from "./friday-monday/friday-monday.strategy.js";
 export * from "./valuation-gravity/watchlist.js";
 export * from "./valuation-gravity/journal.js";
 export * from "./valuation-gravity/valuation-gravity.strategy.js";
+export * from "./snapback/premarket-screener.js";
+export * from "./snapback/reclaim-detector.js";
+export * from "./snapback/snapback.strategy.js";
 export * from "./registry.js";
 
 import type { Strategy } from "@magpie/core";

@@ -878,3 +878,30 @@ unit-testable with fakes (no DB, no Nest DI).
 - Full gate green: api replay 24 tests (hash 15+ assertions, analyst 6, engine
   6); core `LLMAnalysis` gains an optional `replayStubbed`; typecheck/eslint/
   prettier + all builds + migration diff clean.
+
+## T3.2 — Strategy #5 Snapback (intraday)
+
+- **The news gate is the whole edge.** A small-cap that gaps down ≥10% snaps back
+  only when the drop is technical/sympathy/no-news; a genuine miss, dilution, or
+  lawsuit means no bounce. So `llmPrompt` is written as the highest-stakes veto in
+  the system (explicit `requiredChecks` for earnings/dilution/lawsuit/SEC,
+  `webSearch: true`), and it is logged verbosely by the existing analyst path.
+- **Three units, each independently testable:** a `PremarketScreener` port (the
+  $300M–$2B, ≥10% gap-down screen — `StaticPremarketScreener` for tests/replay,
+  empty by default until a real feed is wired), a pure `detectSnapbackReclaim`
+  detector (wait ≥ `waitMinutes` → opening-range low → higher-low → ORL reclaim →
+  rising volume; all five must hold), and the `SnapbackStrategy` gluing them to
+  the pipeline. No I/O in the detector keeps replay deterministic.
+- **Forced flatten is enforced two ways** (spec: "broker-side time condition +
+  app-side"): the exit plan carries `timeStop.flatByClose: true` (the broker
+  time-in-force contract) and `manage()` returns a `close` once the clock reaches
+  `closeMinutesUtc − flattenLeadMinutes`. `shouldForceFlatten` is a pure function
+  of the clock (default cutoff 19:50 UTC) and is unit-tested at the boundary.
+- **AUTO by default with tight caps** (spec §3 row 5; intraday speed matters).
+  Long entry at the reclaim close, stop 1% below the day low, target a half
+  gap-fill toward the prior close.
+- **Wait window is a param** (`waitMinutes`, default 45) — this is the knob T3.5
+  will fork into two variants for the backtest-comparison AC.
+- Registered via one `registry.ts` factory line + barrel export (zero other
+  changes — the T2.3 plugin contract). Gate green: strategies 89 → 112 tests
+  (detector 7, screener 6, strategy 10); typecheck/eslint/prettier + suite clean.
