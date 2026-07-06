@@ -59,6 +59,8 @@ export interface PersistedAnalysis {
   rawResponse: string | null;
   latencyMs: number | null;
   model: string;
+  /** Content hash of the request, for replay cache lookup (T3.1). */
+  contextHash?: string | null;
 }
 
 /** Persistence port for the audit trail of analyses. */

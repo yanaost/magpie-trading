@@ -61,6 +61,24 @@ export const envSchema = z.object({
   PIPELINE_EXPIRY_SWEEP_MS: z.coerce.number().int().positive().default(60_000),
 
   /**
+   * Replay engine (T3.1). When enabled, the API binds the deterministic replay
+   * clock/analyst/context provider instead of the live ones, so a backtest runs
+   * the same money path against historical candles.
+   */
+  REPLAY_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  /** Playback speed vs real time (1 = real, 60 = 60×). */
+  REPLAY_SPEED_MULTIPLIER: z.coerce.number().min(1).max(60).default(60),
+  /**
+   * Fraction of cache-missed signals the analyst stub passes, in [0, 1]. The
+   * per-signal draw is deterministic (seeded by the signal's context hash), so
+   * this sets *which* signals pass, not a random rate.
+   */
+  REPLAY_STUB_PASS_RATE: z.coerce.number().min(0).max(1).default(0.7),
+
+  /**
    * Enables the dev-only synthetic-signal trigger endpoint (`POST /dev/...`),
    * used for the T1.9 full-loop demo. Unset means "enabled outside production"
    * (resolved against NODE_ENV in the controller); set `"true"`/`"false"` to

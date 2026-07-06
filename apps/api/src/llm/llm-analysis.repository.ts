@@ -27,6 +27,7 @@ export class DrizzleLlmAnalysisRepository implements LlmAnalysisRepository {
         rawResponse: analysis.rawResponse,
         latencyMs: analysis.latencyMs,
         model: analysis.model,
+        contextHash: analysis.contextHash ?? null,
       })
       .returning({ id: llmAnalyses.id });
     if (!row) throw new Error("llm_analyses insert returned no row");

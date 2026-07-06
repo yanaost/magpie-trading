@@ -151,9 +151,18 @@ export const llmAnalyses = pgTable(
     rawResponse: text("raw_response"),
     latencyMs: integer("latency_ms"),
     model: text("model").notNull(),
+    /**
+     * Content hash of the analysis request (strategy, ticker, prompt, context).
+     * The replay engine (T3.1) looks analyses up by this to reuse a real verdict
+     * instead of re-calling the model. Nullable: rows written before T3.1 have none.
+     */
+    contextHash: text("context_hash"),
     createdAt: createdAt(),
   },
-  (t) => [index("llm_analyses_signal_idx").on(t.signalId)],
+  (t) => [
+    index("llm_analyses_signal_idx").on(t.signalId),
+    index("llm_analyses_context_hash_idx").on(t.contextHash),
+  ],
 );
 
 /** proposals — finalized trade proposal awaiting decision/execution (spec §7). */

@@ -78,6 +78,13 @@ export const LLMAnalysisSchema = z.object({
   latencyMs: z.number().int().nonnegative().optional(),
   /** Raw response text, retained for audit. */
   raw: z.string().optional(),
+  /**
+   * Set by the replay engine (T3.1) when this verdict was *synthesized* — a
+   * pass-rate stub used because no cached analysis existed for the signal's
+   * context. Absent/false means a real (live or cache-replayed) model verdict.
+   * Surfaced in backtest reports so stubbed results are never mistaken for real.
+   */
+  replayStubbed: z.boolean().optional(),
 });
 /** A validated LLM analysis result. */
 export type LLMAnalysis = z.infer<typeof LLMAnalysisSchema>;

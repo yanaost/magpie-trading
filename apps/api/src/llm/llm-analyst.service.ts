@@ -24,6 +24,7 @@ import {
   type LlmAnalysisRepository,
   type LlmAnalystClient,
 } from "./llm.types.js";
+import { analysisContextHash } from "../replay/signal-context-hash.js";
 
 /** Raised by the wall-clock guard when the model call overruns the ceiling. */
 class AnalysisTimeoutError extends Error {
@@ -120,6 +121,8 @@ export class LlmAnalystService {
         rawResponse: analysis.raw ?? null,
         latencyMs: analysis.latencyMs ?? null,
         model: analysis.model ?? this.client.model,
+        // Recorded so a later replay can reuse this real verdict (T3.1).
+        contextHash: analysisContextHash(request),
       });
     } catch (err) {
       this.logger.error(
