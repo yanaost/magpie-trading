@@ -15,6 +15,7 @@ import { QualSphbStrategy } from "./qual-sphb/qual-sphb.strategy.js";
 import { EarningsFadeStrategy } from "./earnings-fade/earnings-fade.strategy.js";
 import { HypeMomentumStrategy } from "./hype-momentum/hype-momentum.strategy.js";
 import { FridayMondayFlowStrategy } from "./friday-monday/friday-monday.strategy.js";
+import { ValuationGravityStrategy } from "./valuation-gravity/valuation-gravity.strategy.js";
 
 /** Constructs a fresh strategy instance. */
 export type StrategyFactory = () => Strategy;
@@ -28,6 +29,7 @@ export const STRATEGY_FACTORIES: readonly StrategyFactory[] = [
   () => new EarningsFadeStrategy(),
   () => new HypeMomentumStrategy(),
   () => new FridayMondayFlowStrategy(),
+  () => new ValuationGravityStrategy(),
 ];
 
 /** Instantiate all registered strategies. */

@@ -14,6 +14,9 @@ export * from "./friday-monday/trading-week.js";
 export * from "./friday-monday/trending-list.js";
 export * from "./friday-monday/flow-detector.js";
 export * from "./friday-monday/friday-monday.strategy.js";
+export * from "./valuation-gravity/watchlist.js";
+export * from "./valuation-gravity/journal.js";
+export * from "./valuation-gravity/valuation-gravity.strategy.js";
 export * from "./registry.js";
 
 import type { Strategy } from "@magpie/core";

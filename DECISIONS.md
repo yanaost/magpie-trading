@@ -802,3 +802,32 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
 - Full gate green: strategies 71 tests (+18 over T2.6's 53: calendar/week
   helpers 7, flow signalling + Monday auto-cancel + exit rules 11);
   typecheck/eslint/prettier + all package builds + Next.js build + api 142.
+
+## T2.8 — Strategy #8 — Valuation gravity (WATCH-only)
+
+- **No order-placement path — enforced by the type system.** `buildProposal` is
+  declared to return `never` (and throws). Because `never` is assignable to
+  `ProposalDraft`, the class still satisfies `Strategy`, but it is _statically
+  impossible_ for this strategy to hand the pipeline a trade — a compile-time
+  test asserts `ReturnType<…["buildProposal"]> extends never` (T2.8 AC). `manage`
+  always returns `null`; no position can ever exist to manage.
+- **It only journals.** `scan` emits `valuation-journal` observation signals (not
+  trade triggers) for every watchlist name inside its two-week post-earnings
+  window. The dashboard renders these as a running log on the tab; the pipeline
+  never proposes off them.
+- **Two injected ports, both with static defaults.** Earnings dates reuse the
+  T2.5 `CalendarProvider` (no second calendar abstraction); trailing P/S comes
+  from a new `ValuationDataProvider` with a `StaticValuationDataProvider` that
+  supports per-date overrides for time-varying replay. Live fundamentals feed is
+  documented-and-deferred.
+- **Fixed 5-name watchlist, each paired with an established peer** (RIVN/TSLA,
+  HOOD/SCHW, PLTR/SNOW, SOFI/ALLY, AFRM/SYF). The journal records the darling's
+  P/S ÷ the peer's P/S ("premium"), which is the raw evidence for the
+  mean-reversion thesis a future strategy could trade on — this one only watches.
+- **Journaling is a pure function** (`buildJournalEntries`): given asOf +
+  earnings + a P/S lookup it returns the entries, so window edges (day 0…14),
+  most-recent-report selection, and missing-data handling are all fixture-tested,
+  and a quarter replayed twice yields byte-identical journals (determinism test).
+- Full gate green: strategies 89 tests (+18 over T2.7's 71: journal logic 10,
+  strategy incl. the `never` proof + quarter replay 8); core 94; api 142;
+  typecheck/eslint/prettier + all builds.
