@@ -8,6 +8,7 @@
  * in-memory fakes (T1.6 AC) and swapped for Drizzle/BullMQ in production.
  */
 import type {
+  AdmitDecision,
   AnalysisRequest,
   DecidedBy,
   ExecutionPort,
@@ -16,8 +17,10 @@ import type {
   MarketContext,
   Mode,
   QuantSignal,
+  ResultOutcome,
   RiskEvent,
   RiskManager,
+  Side,
   Strategy,
   TradeProposal,
   Ticker,
@@ -38,6 +41,9 @@ export const EXECUTION_PORT_PROVIDER = Symbol("EXECUTION_PORT_PROVIDER");
 export const KILL_SWITCH_GATE = Symbol("KILL_SWITCH_GATE");
 export const BRACKET_INDEX = Symbol("BRACKET_INDEX");
 export const PIPELINE_CLOCK = Symbol("PIPELINE_CLOCK");
+export const AUTO_GOVERNOR = Symbol("AUTO_GOVERNOR");
+export const AUTO_MODE_CONTROLLER = Symbol("AUTO_MODE_CONTROLLER");
+export const AUTO_TRADE_NOTIFIER = Symbol("AUTO_TRADE_NOTIFIER");
 
 /**
  * A resolved, runnable strategy: the plugin instance plus its live operating
@@ -194,4 +200,64 @@ export interface BracketIndex {
 /** Injectable clock so proposal expiry is deterministic in tests. */
 export interface Clock {
   now(): Date;
+}
+
+/**
+ * AUTO-mode governor port (spec §3.2, T3.4). Backed by the pure
+ * {@link import("@magpie/core").AutoGovernor} — a per-strategy daily trade cap
+ * plus a consecutive-loss cooldown that demotes AUTO→APPROVE. Optional: absent
+ * it, AUTO execution runs unbraked (pre-T3.4 behaviour).
+ */
+export interface AutoGovernor {
+  admitEntry(strategyId: string, now: Date): AdmitDecision;
+  recordEntry(strategyId: string, now: Date): void;
+  recordResult(
+    strategyId: string,
+    realizedPnl: number,
+    now: Date,
+  ): ResultOutcome;
+}
+
+/**
+ * Persists an AUTO→APPROVE demotion so the next scan routes the strategy's
+ * signals through the approval surface instead of executing them.
+ */
+export interface AutoModeController {
+  demote(strategyId: string, reason: string, now: Date): Promise<void>;
+}
+
+/** An auto entry that was just placed. */
+export interface AutoEntryEvent {
+  readonly strategyId: string;
+  readonly ticker: Ticker;
+  readonly side: Side;
+  readonly qty: number;
+  readonly bracketId: string;
+}
+
+/** An auto position that just fully closed, with its realized P&L. */
+export interface AutoExitEvent {
+  readonly strategyId: string;
+  readonly ticker: Ticker;
+  readonly side: Side;
+  readonly qty: number;
+  readonly realizedPnl: number;
+}
+
+/** A strategy that was just demoted out of AUTO by the cooldown. */
+export interface AutoDemotionEvent {
+  readonly strategyId: string;
+  readonly reason: string;
+  readonly consecutiveLosses: number;
+}
+
+/**
+ * Notifies the operator on every unattended (AUTO) entry and exit and on a
+ * cooldown demotion (T3.4 AC). Channels are best-effort — the pipeline isolates
+ * notifier failures so a down channel never blocks the money path.
+ */
+export interface AutoTradeNotifier {
+  autoEntry(event: AutoEntryEvent): Promise<void>;
+  autoExit(event: AutoExitEvent): Promise<void>;
+  demoted(event: AutoDemotionEvent): Promise<void>;
 }

@@ -18,6 +18,7 @@ import {
 import { DB_CLIENT, type DbClient } from "../infra/infra.module.js";
 import { STRATEGY_INSTANCES } from "./pipeline.providers.js";
 import type {
+  AutoModeController,
   JournalEntry,
   JournalSink,
   PendingProposal,
@@ -246,6 +247,27 @@ export class DrizzlePipelineAuditSink implements PipelineAuditSink {
       before: entry.before,
       after: entry.after,
     });
+  }
+}
+
+/**
+ * Persists an AUTO→APPROVE cooldown demotion (T3.4). Guarded on the row still
+ * being AUTO so the write is idempotent (a re-fired demotion is a no-op) and a
+ * human's manual mode change is never clobbered.
+ */
+@Injectable()
+export class DrizzleAutoModeController implements AutoModeController {
+  constructor(@Inject(DB_CLIENT) private readonly dbClient: DbClient) {}
+  async demote(strategyId: string, _reason: string, _now: Date): Promise<void> {
+    await this.dbClient.db
+      .update(schema.strategies)
+      .set({ mode: "APPROVE" })
+      .where(
+        and(
+          eq(schema.strategies.id, strategyId),
+          eq(schema.strategies.mode, "AUTO"),
+        ),
+      );
   }
 }
 

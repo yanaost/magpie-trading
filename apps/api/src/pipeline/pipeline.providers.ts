@@ -22,7 +22,12 @@ import { DB_CLIENT, type DbClient } from "../infra/infra.module.js";
 import { KillSwitchService } from "../killswitch/killswitch.service.js";
 import { LlmAnalystService } from "../llm/llm-analyst.service.js";
 import { EventsGateway } from "../ws/events.gateway.js";
+import { TelegramApi } from "../telegram/telegram.api.js";
 import type {
+  AutoDemotionEvent,
+  AutoEntryEvent,
+  AutoExitEvent,
+  AutoTradeNotifier,
   Clock,
   ExecutionPortProvider,
   KillSwitchGate,
@@ -87,6 +92,48 @@ export class WsProposalNotifier implements ProposalNotifier {
       riskPct: proposal.riskPct,
       expiry: proposal.expiry.toISOString(),
     });
+  }
+}
+
+/**
+ * Fans AUTO-mode trade notifications (T3.4) out to the dashboard (WS `alerts`)
+ * and Telegram. Every unattended entry/exit and every cooldown demotion is
+ * surfaced to the operator. Both channels are best-effort — Telegram swallows
+ * its own transport errors and the pipeline wraps the call — so a down channel
+ * never blocks the money path.
+ */
+@Injectable()
+export class FanoutAutoTradeNotifier implements AutoTradeNotifier {
+  constructor(
+    private readonly gateway: EventsGateway,
+    private readonly telegram: TelegramApi,
+  ) {}
+
+  private async tg(text: string): Promise<void> {
+    if (!this.telegram.enabled || !this.telegram.chatId) return;
+    await this.telegram.sendText(this.telegram.chatId, text);
+  }
+
+  async autoEntry(e: AutoEntryEvent): Promise<void> {
+    this.gateway.emitAlert({ kind: "auto-entry", ...e });
+    await this.tg(
+      `<b>AUTO entry</b> ${e.strategyId}\n${e.side.toUpperCase()} ${e.qty} ${e.ticker}`,
+    );
+  }
+
+  async autoExit(e: AutoExitEvent): Promise<void> {
+    this.gateway.emitAlert({ kind: "auto-exit", ...e });
+    const sign = e.realizedPnl >= 0 ? "+" : "";
+    await this.tg(
+      `<b>AUTO exit</b> ${e.strategyId}\n${e.side.toUpperCase()} ${e.qty} ${e.ticker} — P&L ${sign}$${e.realizedPnl.toFixed(2)}`,
+    );
+  }
+
+  async demoted(e: AutoDemotionEvent): Promise<void> {
+    this.gateway.emitAlert({ kind: "auto-demoted", ...e });
+    await this.tg(
+      `<b>⚠️ ${e.strategyId} demoted AUTO→APPROVE</b>\n${e.reason}`,
+    );
   }
 }
 

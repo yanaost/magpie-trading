@@ -139,6 +139,28 @@ interface ExitTrigger {
   readonly reference: number;
 }
 
+/**
+ * A trade that fully closed on this rung, with its realized P&L — the unit the
+ * AUTO-mode governor (T3.4) counts wins/losses in. Buffered as brackets close
+ * and drained by the pipeline each monitor tick.
+ */
+export interface SimClosedTrade {
+  /** Strategy instance that owned the bracket. */
+  readonly strategyId: string;
+  /** Bracket that closed. */
+  readonly bracketId: string;
+  /** Symbol. */
+  readonly ticker: Ticker;
+  /** Long or short. */
+  readonly side: Side;
+  /** Shares/contracts closed. */
+  readonly qty: number;
+  /** Realized P&L for the trade, net of commissions (USD). */
+  readonly realizedPnl: number;
+  /** When the trade closed. */
+  readonly closedAt: Date;
+}
+
 /** A working or closed bracket tracked inside a portfolio. */
 interface SimBracket {
   bracketId: string;
@@ -183,6 +205,8 @@ export class Simulator implements ExecutionPort {
   private readonly marks = new Map<Ticker, { quote: BidAsk; ts: Date }>();
   /** All fills produced, newest last — the caller drains/persists these. */
   private readonly fills: Fill[] = [];
+  /** Trades that fully closed since the last drain (T3.4 governor input). */
+  private readonly closed: SimClosedTrade[] = [];
   /** bracketId → owning strategy instance, for O(1) lookup across portfolios. */
   private readonly bracketOwner = new Map<string, string>();
   private seq = 0;
@@ -346,6 +370,7 @@ export class Simulator implements ExecutionPort {
     b.status = "closed";
     b.avgExitPrice = price;
     b.closedAt = ts;
+    this.recordClosed(b, ts);
     this.recordFill(
       leg === "stop" ? b.orderIds.stop : b.orderIds.target!,
       b.ticker,
@@ -376,6 +401,19 @@ export class Simulator implements ExecutionPort {
       }
     }
     return null;
+  }
+
+  /** Buffer a just-closed bracket for the governor to drain (T3.4). */
+  private recordClosed(b: SimBracket, ts: Date): void {
+    this.closed.push({
+      strategyId: b.strategyId,
+      bracketId: b.bracketId,
+      ticker: b.ticker,
+      side: b.side,
+      qty: b.qty,
+      realizedPnl: b.realizedPnl,
+      closedAt: ts,
+    });
   }
 
   private recordFill(
@@ -539,6 +577,7 @@ export class Simulator implements ExecutionPort {
       b.status = "closed";
       b.avgExitPrice = price;
       b.closedAt = mk.ts;
+      this.recordClosed(b, mk.ts);
       this.recordFill(
         b.orderIds.parent,
         b.ticker,
@@ -569,6 +608,31 @@ export class Simulator implements ExecutionPort {
     return since
       ? this.fills.filter((f) => f.filledAt >= since)
       : [...this.fills];
+  }
+
+  /**
+   * Drain the trades that have fully closed since the last drain (T3.4). With a
+   * `strategyId`, returns and removes only that strategy's closed trades and
+   * leaves the rest buffered — so each per-strategy monitor tick consumes its
+   * own results without discarding another strategy's. The realized P&L is the
+   * closing leg's net figure; its sign is what the governor counts as a
+   * win/loss.
+   * @param strategyId - when given, only this strategy's closed trades
+   */
+  drainClosedTrades(strategyId?: string): SimClosedTrade[] {
+    if (strategyId === undefined) {
+      const out = [...this.closed];
+      this.closed.length = 0;
+      return out;
+    }
+    const out: SimClosedTrade[] = [];
+    const keep: SimClosedTrade[] = [];
+    for (const t of this.closed) {
+      (t.strategyId === strategyId ? out : keep).push(t);
+    }
+    this.closed.length = 0;
+    this.closed.push(...keep);
+    return out;
   }
 
   // ---- Sim-only surface (persistence/analytics live in apps/api) -----------

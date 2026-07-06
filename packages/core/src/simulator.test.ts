@@ -355,3 +355,46 @@ describe("AC: property — a bracket closes on exactly one leg, never both", () 
     }
   });
 });
+
+describe("drainClosedTrades (T3.4 governor input)", () => {
+  it("emits a loss when a long is stopped out", async () => {
+    const sim = new Simulator();
+    sim.onBar(bar("QUAL", { close: 100 }, 0));
+    await sim.placeBracket(longReq());
+    sim.onBar(bar("QUAL", { open: 100, high: 101, low: 94, close: 96 }, 5));
+
+    const closed = sim.drainClosedTrades();
+    expect(closed).toHaveLength(1);
+    expect(closed[0]!.strategyId).toBe("qual-sphb");
+    expect(closed[0]!.ticker).toBe("QUAL");
+    expect(closed[0]!.realizedPnl).toBeLessThan(0);
+    // Draining consumes the buffer.
+    expect(sim.drainClosedTrades()).toHaveLength(0);
+  });
+
+  it("emits a win when a long hits its target", async () => {
+    const sim = new Simulator();
+    sim.onBar(bar("QUAL", { close: 100 }, 0));
+    await sim.placeBracket(longReq());
+    sim.onBar(bar("QUAL", { open: 100, high: 111, low: 99, close: 110 }, 5));
+
+    const closed = sim.drainClosedTrades();
+    expect(closed).toHaveLength(1);
+    expect(closed[0]!.realizedPnl).toBeGreaterThan(0);
+  });
+
+  it("drains only the requested strategy, leaving others buffered", async () => {
+    const sim = new Simulator();
+    sim.onBar(bar("QUAL", { close: 100 }, 0));
+    await sim.placeBracket(longReq({ strategyId: "a" }));
+    await sim.placeBracket(longReq({ strategyId: "b" }));
+    sim.onBar(bar("QUAL", { open: 100, high: 101, low: 94, close: 96 }, 5));
+
+    const a = sim.drainClosedTrades("a");
+    expect(a.map((t) => t.strategyId)).toEqual(["a"]);
+    // b is still buffered.
+    const b = sim.drainClosedTrades("b");
+    expect(b.map((t) => t.strategyId)).toEqual(["b"]);
+    expect(sim.drainClosedTrades()).toHaveLength(0);
+  });
+});

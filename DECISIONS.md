@@ -932,3 +932,40 @@ unit-testable with fakes (no DB, no Nest DI).
 - Registered via one factory line + barrel export (T2.3 contract). Gate green:
   strategies 112 → 139 tests (detector 13, short-interest 4, strategy 10);
   typecheck/eslint/prettier + full suite clean.
+
+## T3.4 — AUTO mode hardening
+
+- **Two independent circuit breakers, one pure governor.** `AutoGovernor` (core,
+  I/O-free) enforces a per-strategy **daily trade cap** and a **consecutive-loss
+  cooldown** that demotes AUTO→APPROVE. Keeping it pure makes the breakers unit-
+  testable and deterministic under replay; the pipeline only wires I/O around it.
+- **Losses are observed sim-side, not via `manage()`.** Whipsaw stop-outs fire
+  inside the `Simulator` (`detectExit` on `onBar`), never through the strategy's
+  `manage()`. So the governor consumes realized results from a new
+  `Simulator.drainClosedTrades(strategyId?)` — a per-strategy drain that leaves
+  other strategies' closes buffered, so per-strategy monitor ticks don't discard
+  each other's results. Chose to feature-detect `drainClosedTrades` on the
+  concrete port rather than widen `ExecutionPort` — the IB adapter is untouched.
+- **Non-breaking wiring via `@Optional()`.** The governor, `AutoModeController`,
+  and `AutoTradeNotifier` are optional constructor injections, so pre-T3.4 tests
+  and the module still construct `PipelineService` when they're absent. When the
+  governor is present, `executeAuto` gates every entry through `admitEntry`
+  (blocked → `{kind:"auto-capped"}`, journaled) and `monitorPositions` calls
+  `reconcileAutoResults` to book each drained close.
+- **Idempotent demotion.** `DrizzleAutoModeController.demote` writes
+  `mode='APPROVE'` guarded on `WHERE mode='AUTO'`, so a re-fired demotion is a
+  no-op and a manual mode change isn't clobbered. The governor also fires the
+  AUTO→APPROVE transition exactly once (`!demoted && streak >= N`); a further loss
+  keeps it demoted without re-notifying. Demotion is audited (`auto_demote`,
+  before `{mode:AUTO}` → after `{mode:APPROVE, consecutiveLosses}`).
+- **Notify every auto entry and exit.** `FanoutAutoTradeNotifier` mirrors each
+  auto entry/exit/demotion to the WS gateway and best-effort Telegram
+  (`sendText`, guarded on `enabled && chatId`); all notifications go through
+  `safeNotify` so a dead channel never blocks the money path.
+- **AC — chaos test.** `pipeline.auto-governor.spec.ts` drives a pathological
+  whipsaw day (every entry instantly stopped out) through the _real_ Simulator +
+  _real_ AutoGovernor: scenario 1 asserts the cooldown demotes after 3 losses and
+  subsequent signals route through APPROVE (no more unattended entries); scenario
+  2 disables the cooldown and asserts the daily cap blocks entries past the limit
+  while the strategy stays AUTO. Gate green: core 94 → 105, api 166 → 168;
+  `auto-governor.ts` 100% coverage; typecheck/eslint/prettier + full suite clean.

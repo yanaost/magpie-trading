@@ -13,9 +13,10 @@
  * gates; the LLM analyst fails safe to veto; the execution port brackets every
  * entry). This service only sequences them and records the audit/journal trail.
  */
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import type {
   BracketOrderRequest,
+  SimClosedTrade,
   DecidedBy,
   ExecutionTarget,
   ExitAction,
@@ -29,6 +30,9 @@ import type {
   TradeProposal,
 } from "@magpie/core";
 import {
+  AUTO_GOVERNOR,
+  AUTO_MODE_CONTROLLER,
+  AUTO_TRADE_NOTIFIER,
   BRACKET_INDEX,
   CROWDING_FILTER,
   EXECUTION_PORT_PROVIDER,
@@ -43,6 +47,9 @@ import {
   RISK_EVENT_STORE,
   SIGNAL_STORE,
   STRATEGY_REGISTRY,
+  type AutoGovernor,
+  type AutoModeController,
+  type AutoTradeNotifier,
   type BracketIndex,
   type Clock,
   type CrowdingFilter,
@@ -67,6 +74,7 @@ export type SignalOutcome =
   | { kind: "risk-rejected"; ticker: string; rule: string }
   | { kind: "executed"; ticker: string; proposalId: string; bracketId: string }
   | { kind: "proposed"; ticker: string; proposalId: string }
+  | { kind: "auto-capped"; ticker: string; reason: string }
   | { kind: "watched"; ticker: string };
 
 /** The outcome of a human approve/reject decision on a pending proposal (T1.8). */
@@ -119,6 +127,15 @@ export class PipelineService {
     @Inject(KILL_SWITCH_GATE) private readonly killSwitch: KillSwitchGate,
     @Inject(BRACKET_INDEX) private readonly brackets: BracketIndex,
     @Inject(PIPELINE_CLOCK) private readonly clock: Clock,
+    // AUTO-mode hardening (T3.4). Optional so pre-T3.4 wiring/tests still
+    // construct the service; when absent, AUTO execution runs unbraked.
+    @Optional() @Inject(AUTO_GOVERNOR) private readonly governor?: AutoGovernor,
+    @Optional()
+    @Inject(AUTO_MODE_CONTROLLER)
+    private readonly autoMode?: AutoModeController,
+    @Optional()
+    @Inject(AUTO_TRADE_NOTIFIER)
+    private readonly autoNotifier?: AutoTradeNotifier,
   ) {}
 
   /**
@@ -272,12 +289,33 @@ export class PipelineService {
     }
   }
 
-  /** AUTO mode: persist, place the bracket, mark executed, audit. */
+  /** AUTO mode: cap-gate, persist, place the bracket, mark executed, audit. */
   private async executeAuto(
     runtime: StrategyRuntime,
     proposal: TradeProposal,
     now: Date,
   ): Promise<SignalOutcome> {
+    // T3.4 safety brake: daily trade cap / cooldown. A blocked entry is
+    // journalled and dropped — the signal doesn't execute (no bleeding).
+    if (this.governor) {
+      const admit = this.governor.admitEntry(proposal.strategyId, now);
+      if (!admit.allowed) {
+        await this.journal.append({
+          strategyId: proposal.strategyId,
+          entryType: "decision",
+          refType: "signal",
+          refId: proposal.signalId,
+          title: `AUTO entry blocked on ${proposal.ticker}: ${admit.reason}`,
+          meta: { reason: admit.reason, guard: "auto-governor" },
+        });
+        return {
+          kind: "auto-capped",
+          ticker: proposal.ticker,
+          reason: admit.reason,
+        };
+      }
+    }
+
     const { id } = await this.proposals.persist(proposal);
     const { bracketId } = await this.placeBracketAndRecord(
       {
@@ -296,12 +334,118 @@ export class PipelineService {
       "auto_execute",
       "AUTO",
     );
+    this.governor?.recordEntry(proposal.strategyId, now);
+    if (this.autoNotifier) {
+      await this.safeNotify(() =>
+        this.autoNotifier!.autoEntry({
+          strategyId: proposal.strategyId,
+          ticker: proposal.ticker,
+          side: proposal.side,
+          qty: proposal.qty,
+          bracketId,
+        }),
+      );
+    }
     return {
       kind: "executed",
       ticker: proposal.ticker,
       proposalId: id,
       bracketId,
     };
+  }
+
+  /**
+   * Reconcile the trades that closed on a strategy's rung since the last tick
+   * (T3.4): feed each realized win/loss into the governor, notify the operator
+   * of the exit, and — on the loss that trips the cooldown — demote AUTO→APPROVE
+   * (persisted, audited, notified). A no-op unless the governor is wired and the
+   * execution port can surface closed trades (the SIM {@link Simulator} does).
+   * @param strategyId - the strategy to reconcile
+   * @returns how many trades were reconciled and whether it demoted
+   */
+  async reconcileAutoResults(
+    strategyId: string,
+  ): Promise<{ closed: number; demoted: boolean }> {
+    if (!this.governor) return { closed: 0, demoted: false };
+    const runtime = await this.registry.getRuntime(strategyId);
+    if (!runtime) return { closed: 0, demoted: false };
+    const port = this.execPorts.portFor(runtime.executionTarget);
+    const drain = (
+      port as Partial<{ drainClosedTrades(id?: string): SimClosedTrade[] }>
+    ).drainClosedTrades;
+    if (typeof drain !== "function") return { closed: 0, demoted: false };
+
+    const trades = drain.call(port, strategyId);
+    let demoted = false;
+    for (const t of trades) {
+      // The bracket is gone; drop its index entry so a re-entry can re-bracket.
+      this.brackets.clear(strategyId, t.ticker);
+      if (this.autoNotifier) {
+        await this.safeNotify(() =>
+          this.autoNotifier!.autoExit({
+            strategyId,
+            ticker: t.ticker,
+            side: t.side,
+            qty: t.qty,
+            realizedPnl: t.realizedPnl,
+          }),
+        );
+      }
+      const outcome = this.governor.recordResult(
+        strategyId,
+        t.realizedPnl,
+        t.closedAt,
+      );
+      if (outcome.demote) {
+        demoted = true;
+        await this.demoteFromAuto(
+          strategyId,
+          outcome.consecutiveLosses,
+          t.closedAt,
+        );
+      }
+    }
+    return { closed: trades.length, demoted };
+  }
+
+  /** Persist + audit + journal + notify an AUTO→APPROVE cooldown demotion. */
+  private async demoteFromAuto(
+    strategyId: string,
+    consecutiveLosses: number,
+    now: Date,
+  ): Promise<void> {
+    const reason = `consecutive-loss cooldown (${consecutiveLosses} losses)`;
+    if (this.autoMode) await this.autoMode.demote(strategyId, reason, now);
+    await this.audit.append({
+      entityType: "strategy",
+      entityId: strategyId,
+      action: "auto_demote",
+      actor: "system",
+      before: { mode: "AUTO" },
+      after: { mode: "APPROVE", consecutiveLosses },
+    });
+    await this.journal.append({
+      strategyId,
+      entryType: "decision",
+      refType: "strategy",
+      refId: strategyId,
+      title: `AUTO→APPROVE: ${reason}`,
+      meta: { reason: "auto-cooldown", consecutiveLosses },
+    });
+    if (this.autoNotifier) {
+      await this.safeNotify(() =>
+        this.autoNotifier!.demoted({ strategyId, reason, consecutiveLosses }),
+      );
+    }
+  }
+
+  /** Run a notifier call, swallowing (logging) any failure so it never blocks. */
+  private async safeNotify(fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+    } catch (err) {
+      this.logger.warn(`auto-trade notification failed: ${String(err)}`);
+    }
   }
 
   /**
@@ -514,6 +658,9 @@ export class PipelineService {
   async monitorPositions(strategyId: string): Promise<number> {
     const runtime = await this.registry.getRuntime(strategyId);
     if (!runtime) return 0;
+    // Book any trades that closed (stop/target fills) before managing the rest,
+    // so the governor's cap/cooldown state is current for this tick (T3.4).
+    await this.reconcileAutoResults(strategyId);
     const now = this.clock.now();
     const ctx = await this.marketCtx.contextFor(runtime.executionTarget, now);
     const port = this.execPorts.portFor(runtime.executionTarget);

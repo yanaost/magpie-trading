@@ -22,6 +22,7 @@ export * from "./position.js";
 export * from "./execution.js";
 export * from "./strategy.js";
 export * from "./risk-manager.js";
+export * from "./auto-governor.js";
 export * from "./simulator.js";
 export * from "./performance.js";
 

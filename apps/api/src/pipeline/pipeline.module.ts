@@ -6,7 +6,7 @@
  */
 import { BullModule } from "@nestjs/bullmq";
 import { Module } from "@nestjs/common";
-import { Simulator } from "@magpie/core";
+import { AutoGovernor, Simulator } from "@magpie/core";
 import type { TradeProposal } from "@magpie/core";
 import { allStrategies } from "@magpie/strategies";
 import { EventsModule } from "../ws/events.module.js";
@@ -18,6 +18,7 @@ import { LlmModule } from "../llm/llm.module.js";
 import { QueueModule } from "../queue/queue.module.js";
 import {
   DbSimMarketContextProvider,
+  FanoutAutoTradeNotifier,
   KillSwitchGateAdapter,
   LlmAnalystAdapter,
   SystemClock,
@@ -41,6 +42,7 @@ import {
 import {
   DrizzleJournalSink,
   DrizzlePipelineAuditSink,
+  DrizzleAutoModeController,
   DrizzleProposalStore,
   DrizzleRiskEventStore,
   DrizzleSignalStore,
@@ -48,6 +50,9 @@ import {
 } from "./pipeline.repository.js";
 import { PipelineService } from "./pipeline.service.js";
 import {
+  AUTO_GOVERNOR,
+  AUTO_MODE_CONTROLLER,
+  AUTO_TRADE_NOTIFIER,
   BRACKET_INDEX,
   CROWDING_FILTER,
   EXECUTION_PORT_PROVIDER,
@@ -120,6 +125,12 @@ import {
     },
     { provide: BRACKET_INDEX, useClass: InMemoryBracketIndex },
     { provide: PIPELINE_CLOCK, useClass: SystemClock },
+    // AUTO-mode hardening (T3.4): shared in-process governor (caps + cooldown),
+    // the demotion writer, and the entry/exit/demotion notifier.
+    { provide: AUTO_GOVERNOR, useFactory: () => new AutoGovernor() },
+    { provide: AUTO_MODE_CONTROLLER, useClass: DrizzleAutoModeController },
+    FanoutAutoTradeNotifier,
+    { provide: AUTO_TRADE_NOTIFIER, useExisting: FanoutAutoTradeNotifier },
   ],
   exports: [
     PipelineService,

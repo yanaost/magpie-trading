@@ -76,6 +76,15 @@ export class TelegramApi {
     }
   }
 
+  /** Send a plain HTML message (no buttons) — used for auto-trade alerts. */
+  async sendText(chatId: string, text: string): Promise<void> {
+    await this.call("sendMessage", {
+      chat_id: chatId,
+      text,
+      parse_mode: "HTML",
+    });
+  }
+
   /** Send a message with an inline keyboard (one button row per array entry). */
   async sendWithButtons(
     chatId: string,
