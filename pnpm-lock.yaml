@@ -120,6 +120,9 @@ importers:
 
   apps/web:
     dependencies:
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
       next:
         specifier: ^15.1.4
         version: 15.5.20(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
