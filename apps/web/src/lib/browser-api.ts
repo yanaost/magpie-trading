@@ -7,6 +7,7 @@
 import type {
   JournalView,
   KillSwitchState,
+  PerformanceView,
   PortfolioSummary,
   PositionView,
   ProposalView,
@@ -41,8 +42,15 @@ export const getPositions = (): Promise<PositionView[]> =>
 export const getPortfolio = (): Promise<PortfolioSummary> =>
   req<PortfolioSummary>("/api/portfolio");
 
-export const getSignals = (): Promise<JournalView[]> =>
-  req<JournalView[]>("/api/signals");
+export const getSignals = (strategyId?: string): Promise<JournalView[]> =>
+  req<JournalView[]>(
+    `/api/signals${strategyId ? `?strategyId=${encodeURIComponent(strategyId)}` : ""}`,
+  );
+
+export const getPerformance = (strategyId: string): Promise<PerformanceView> =>
+  req<PerformanceView>(
+    `/api/strategies/${encodeURIComponent(strategyId)}/performance`,
+  );
 
 export const getKillSwitch = (): Promise<KillSwitchState> =>
   req<KillSwitchState>("/killswitch");

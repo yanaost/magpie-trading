@@ -13,6 +13,7 @@ import {
   DashboardService,
   type CandleCount,
   type JournalView,
+  type PerformanceView,
   type PortfolioSummary,
   type PositionView,
   type StrategySummary,
@@ -78,6 +79,12 @@ export class DashboardController {
       }
       throw err;
     }
+  }
+
+  /** Per-strategy performance module (§3.3), split by execution target. */
+  @Get("strategies/:id/performance")
+  performance(@Param("id") id: string): Promise<PerformanceView> {
+    return this.dashboard.performance(id);
   }
 
   @Get("positions")

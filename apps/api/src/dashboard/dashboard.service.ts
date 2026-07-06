@@ -1,6 +1,13 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { schema, and, desc, eq } from "@magpie/db";
-import { Simulator } from "@magpie/core";
+import {
+  Simulator,
+  computePerformance,
+  emptyPerformance,
+  EXECUTION_TARGETS,
+  type ClosedTrade,
+  type PerformanceStats,
+} from "@magpie/core";
 import { DB_CLIENT, type DbClient } from "../infra/infra.module.js";
 import { SIMULATOR } from "../pipeline/pipeline.providers.js";
 import {
@@ -41,6 +48,12 @@ export interface PortfolioSummary {
   openPositions: number;
   openRiskUsd: number;
   tickers: string[];
+}
+
+/** Per-strategy performance, broken out by execution target (§3.3). */
+export interface PerformanceView {
+  strategyId: string;
+  byTarget: Record<string, PerformanceStats>;
 }
 
 /** A journal / signal-log row for the dashboard. */
@@ -194,6 +207,56 @@ export class DashboardService {
         and status = 'closed'
     `;
     return rows[0]?.n ?? 0;
+  }
+
+  /**
+   * Per-strategy performance module (§3.3): win rate, avg R, max drawdown and
+   * the realized-PnL equity curve, computed from *closed* positions and split by
+   * execution target (SIM/PAPER/LIVE) so a strategy's paper record is never
+   * conflated with its sim record. Targets with no closed trades yet report the
+   * empty stats rather than being omitted, so the UI can render a stable set of
+   * panels.
+   */
+  async performance(strategyId: string): Promise<PerformanceView> {
+    const rows = await this.dbClient.sql<
+      {
+        target: string;
+        realized_pnl: string;
+        qty: string;
+        avg_entry_price: string;
+        stop_price: string | null;
+        closed_at: Date | null;
+      }[]
+    >`
+      select target, realized_pnl, qty, avg_entry_price, stop_price, closed_at
+      from positions
+      where strategy_id = ${strategyId}
+        and status = 'closed'
+        and closed_at is not null
+    `;
+
+    const byTarget: Record<string, PerformanceStats> = {};
+    for (const target of EXECUTION_TARGETS) {
+      byTarget[target] = emptyPerformance();
+    }
+    const grouped = new Map<string, ClosedTrade[]>();
+    for (const r of rows) {
+      const trade: ClosedTrade = {
+        realizedPnl: Number(r.realized_pnl),
+        qty: Math.abs(Number(r.qty)),
+        entryPrice: Number(r.avg_entry_price),
+        ...(r.stop_price === null ? {} : { stopPrice: Number(r.stop_price) }),
+        // closed_at is guaranteed non-null by the query filter.
+        closedAt: new Date(r.closed_at as Date),
+      };
+      const list = grouped.get(r.target) ?? [];
+      list.push(trade);
+      grouped.set(r.target, list);
+    }
+    for (const [target, trades] of grouped) {
+      byTarget[target] = computePerformance(trades);
+    }
+    return { strategyId, byTarget };
   }
 
   /** Open SIM positions (live, from the Simulator) with distance-to-stop. */

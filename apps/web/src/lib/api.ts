@@ -66,6 +66,27 @@ export interface JournalView {
   createdAt: string;
 }
 
+export interface EquityPoint {
+  t: string;
+  equity: number;
+}
+
+export interface PerformanceStats {
+  trades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  avgR: number;
+  totalPnl: number;
+  maxDrawdown: number;
+  equityCurve: EquityPoint[];
+}
+
+export interface PerformanceView {
+  strategyId: string;
+  byTarget: Record<string, PerformanceStats>;
+}
+
 export interface KillSwitchState {
   active: boolean;
   reason: string | null;
@@ -90,8 +111,15 @@ export function fetchCandleCounts(): Promise<CandleCount[]> {
   return apiGet<CandleCount[]>("/api/candles/counts");
 }
 
-export function fetchPositions(): Promise<PositionView[]> {
-  return apiGet<PositionView[]>("/api/positions");
+export function fetchPositions(strategyId?: string): Promise<PositionView[]> {
+  const q = strategyId ? `?strategyId=${encodeURIComponent(strategyId)}` : "";
+  return apiGet<PositionView[]>(`/api/positions${q}`);
+}
+
+export function fetchPerformance(strategyId: string): Promise<PerformanceView> {
+  return apiGet<PerformanceView>(
+    `/api/strategies/${encodeURIComponent(strategyId)}/performance`,
+  );
 }
 
 export function fetchPortfolio(): Promise<PortfolioSummary> {

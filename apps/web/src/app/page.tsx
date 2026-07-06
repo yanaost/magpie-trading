@@ -19,7 +19,7 @@ import {
 } from "@/lib/api";
 import LiveStatus from "./live-status";
 import KillSwitch from "./kill-switch";
-import StrategyControls from "./strategy-controls";
+import StrategyTabs from "./strategy-tabs";
 import Approvals from "./approvals";
 import Positions from "./positions";
 import SignalLog from "./signal-log";
@@ -83,27 +83,11 @@ export default async function Dashboard(): Promise<ReactNode> {
       <LiveStatus apiUrl={WS_URL} />
 
       <h2>Strategies</h2>
-      <div className="panel">
-        {strategies.length === 0 ? (
-          <p className="muted">No strategies configured yet.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Strategy</th>
-                <th>Mode</th>
-                <th>Target</th>
-                <th>Dev</th>
-              </tr>
-            </thead>
-            <tbody>
-              {strategies.map((s) => (
-                <StrategyControls key={s.id} strategy={s} />
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <StrategyTabs
+        strategies={strategies}
+        positions={positions}
+        signals={signals}
+      />
 
       <h2>Pending approvals</h2>
       <Approvals initial={proposals} />

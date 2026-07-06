@@ -23,6 +23,7 @@ export * from "./execution.js";
 export * from "./strategy.js";
 export * from "./risk-manager.js";
 export * from "./simulator.js";
+export * from "./performance.js";
 
 /** Semantic version of the core domain contract. */
 export const CORE_VERSION = "0.1.0" as const;

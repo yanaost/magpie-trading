@@ -93,6 +93,61 @@ describe("DashboardService.portfolio", () => {
   });
 });
 
+describe("DashboardService.performance", () => {
+  it("computes per-target stats from closed positions", async () => {
+    const rows = [
+      {
+        target: "SIM",
+        realized_pnl: "200",
+        qty: "100",
+        avg_entry_price: "100",
+        stop_price: "99",
+        closed_at: new Date("2026-07-01T00:00:00.000Z"),
+      },
+      {
+        target: "SIM",
+        realized_pnl: "-100",
+        qty: "100",
+        avg_entry_price: "100",
+        stop_price: "99",
+        closed_at: new Date("2026-07-02T00:00:00.000Z"),
+      },
+      {
+        target: "PAPER",
+        realized_pnl: "50",
+        qty: "10",
+        avg_entry_price: "20",
+        stop_price: null,
+        closed_at: new Date("2026-07-03T00:00:00.000Z"),
+      },
+    ];
+    const dbClient = {
+      sql: vi.fn(async () => rows),
+    } as unknown as DbClient;
+    const svc = new DashboardService(dbClient, fakeSimulator([]));
+
+    const perf = await svc.performance("qual-sphb");
+    expect(perf.strategyId).toBe("qual-sphb");
+    // SIM: one win, one loss => 50% win rate, +2R and -1R => avg 0.5R.
+    expect(perf.byTarget.SIM).toMatchObject({
+      trades: 2,
+      wins: 1,
+      losses: 1,
+      winRate: 0.5,
+      avgR: 0.5,
+      totalPnl: 100,
+    });
+    // PAPER: single win, no stop => win rate 1, avg R 0 (no R-defined trades).
+    expect(perf.byTarget.PAPER).toMatchObject({
+      trades: 1,
+      winRate: 1,
+      avgR: 0,
+    });
+    // LIVE has no closed trades — reported as empty, not omitted.
+    expect(perf.byTarget.LIVE).toMatchObject({ trades: 0 });
+  });
+});
+
 describe("DashboardService.setStrategy", () => {
   /** A minimal chainable fake over the Drizzle query builder. */
   function fakeDb(existing: Record<string, unknown> | null, closedTrades = 0) {

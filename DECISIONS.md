@@ -630,3 +630,33 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
   simplest-path-first preference).
 - Full gate green: 132 api tests (promotion 10, dashboard service 9, dashboard
   controller 4, + existing) + typecheck/eslint/prettier + Next.js build.
+
+## T2.3 — Strategy plugin loader + tabs UI
+
+- **The registry is the single registration seam.** `packages/strategies/registry.ts`
+  holds a `STRATEGY_FACTORIES` array of zero-arg factories; `loadStrategies()`
+  fans out over it (and de-dupes ids). Adding a strategy = new `src/<id>/` folder
+  - one line in that array. `allStrategies()` now delegates here. A registry test
+    proves a newly-registered dummy strategy flows through with no loader changes
+    (AC: "dummy strategy appears with zero code changes elsewhere").
+- **Tabs are fully data-driven off the API roster** (`GET /api/strategies`), so the
+  UI never names a strategy. `strategy-tabs.tsx` renders one tab per returned
+  strategy; the selected tab shows the full §3.3 layout — mode/target controls,
+  the performance module, that strategy's open positions, and its signal log.
+  A new strategy grows a tab with zero edits to any UI file.
+- **Performance math lives in core, pure and unit-tested** (`performance.ts`):
+  win rate, avg R, max drawdown, and the realized-PnL equity curve reduced from
+  closed trades. R-multiple = realizedPnl / (qty × |entry − stop|); stop-less
+  trades are excluded from avg R but still count in win rate and the curve. Max
+  drawdown is peak-to-trough on the cumulative curve. Rounding is cent-granular
+  and inlined (kept the module dependency-free — no import cycle with index.ts).
+- **Performance is split by execution target** (`DashboardService.performance`
+  → `GET /api/strategies/:id/performance`): closed positions grouped by
+  SIM/PAPER/LIVE so a strategy's paper record never mixes with its sim record.
+  Targets with no closed trades report the empty stats (stable UI panels) rather
+  than being omitted.
+- **Equity curve renders as a dependency-free inline SVG sparkline** — no chart
+  library, CSP-safe, green/red by final sign. Simplest path over pulling in a
+  charting dep for a 200×40 line.
+- Full gate green: core 94 tests (perf +9), strategies 18 (registry +3), api 133
+  (perf +1); typecheck/eslint/prettier + Next.js build.
