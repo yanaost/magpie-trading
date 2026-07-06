@@ -21,12 +21,15 @@ import {
   KillSwitchGateAdapter,
   LlmAnalystAdapter,
   NoopCrowdingFilter,
-  SimExecutionPortProvider,
   SystemClock,
   SIMULATOR,
   STRATEGY_INSTANCES,
   WsProposalNotifier,
 } from "./pipeline.providers.js";
+import {
+  executionProviders,
+  MultiTargetExecutionPortProvider,
+} from "../execution/execution.module.js";
 import { InMemoryBracketIndex } from "./bracket-index.js";
 import {
   PipelineProcessor,
@@ -106,7 +109,11 @@ import {
     },
     { provide: CROWDING_FILTER, useClass: NoopCrowdingFilter },
     { provide: MARKET_CONTEXT_PROVIDER, useClass: DbSimMarketContextProvider },
-    { provide: EXECUTION_PORT_PROVIDER, useClass: SimExecutionPortProvider },
+    ...executionProviders,
+    {
+      provide: EXECUTION_PORT_PROVIDER,
+      useExisting: MultiTargetExecutionPortProvider,
+    },
     { provide: BRACKET_INDEX, useClass: InMemoryBracketIndex },
     { provide: PIPELINE_CLOCK, useClass: SystemClock },
   ],

@@ -556,3 +556,46 @@ maxRiskPerTradePct%) / |entry − stop|)`; `qty < 1` ⇒ `per_trade_risk`
   seed→inject→broadcast path. Full workspace: 195 tests, typecheck + eslint +
   prettier + build (incl. Next.js) all green. Full loop also verified live
   end-to-end over REST against Postgres + Redis.
+
+## T2.1 — IB execution adapter (PAPER ExecutionPort)
+
+- **Testable seam over @stoqey/ib, mirroring market-data.** `IbApiOrderGateway`
+  wraps `IBApi` behind a narrow `IbOrderGateway` interface + injectable
+  `IbOrderApiFactory`, so the whole order path is unit-tested against a fake
+  EventEmitter with no live gateway. The real `IBApi` is built lazily by
+  `createIbOrderApi` (CJS bridge via `createRequire`) and opens no socket until
+  `connect()`.
+- **Bracket = OCA group, exits live broker-side.** `placeBracket` stages
+  parent(MKT/LMT, transmit:false) + stop(STP) + optional target(LMT), with only
+  the _last_ leg transmitting so the broker receives the bracket atomically and
+  the protective legs survive a gateway daily-restart. Stop/target use GTC; a
+  protective fill closes the bracket (broker OCA cancels the sibling).
+- **Fills are async, unlike SIM.** The port keeps an in-memory bracket model
+  keyed by our stable `bracketId`, driven by gateway `orderStatus`/`fill`
+  events. Parent-fill ⇒ position `open` (entry price from `avgFillPrice`;
+  `openedAt` stamped on fill so `PositionSchema` is always well-formed even if
+  the exact-time `execDetails` event lags). `getPositions(strategyId)` returns
+  attributed open positions; `getFills(since)` returns buffered fills.
+- **execDetails + commissionReport joined into one `fill`.** The gateway buffers
+  the two halves keyed by `execId` and emits a single `fill` once orderId +
+  shares + commission are all present — so the pipeline persists commission-true
+  fills, never a bare execution.
+- **Monotonic order-id allocator seeded by first `nextValidId`.** Later
+  `nextValidId` values are ignored so the allocator is never rewound under the
+  broker. `allocateOrderId()` throws before ready.
+- **LIVE stays locked (rule 6).** `MultiTargetExecutionPortProvider` routes SIM
+  → the shared in-process Simulator, PAPER → a lazily-built+connected
+  `IbExecutionPort` (no socket on a SIM-only boot), LIVE → a hard
+  `LivePromotionLockedError`. Distinct client id (`IB_CLIENT_ID + 1`) from the
+  market-data connection to avoid a clash.
+- **Reconciliation is pure.** `reconcile(brokerOrders, brokerPositions, known)`
+  diffs broker truth against our books and returns typed mismatches
+  (rogue_order / missing_order / rogue_position / position_drift) for the caller
+  to alert on — satisfies the AC "reconciliation detects a manually placed rogue
+  order" without a live gateway.
+- **Paper integration is a manual smoke, not CI.** `apps/api/scripts/ib-smoke.ts`
+  places+reads+cancels a tiny 1-share bracket against a running paper gateway;
+  it needs the user's IBKR paper gateway (flagged for live verification) and is
+  deliberately excluded from the automated suite. 32 execution unit tests green
+  (gateway 8, port 10, recon 6, provider 3, + mapIbStatus); full workspace 115
+  api tests + typecheck/eslint/prettier/build all green.
