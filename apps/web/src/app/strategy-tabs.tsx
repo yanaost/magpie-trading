@@ -434,7 +434,12 @@ const tabStyle: CSSProperties = {
   padding: "0.4rem 0.7rem",
   background: "var(--bg)",
   color: "var(--text)",
-  border: "1px solid var(--border)",
+  // Longhand border props (not the `border` shorthand) so the active variant can
+  // override borderColor alone without React warning about mixing shorthand and
+  // non-shorthand for the same value on re-render.
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "var(--border)",
   borderRadius: "8px",
   cursor: "pointer",
 };
