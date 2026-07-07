@@ -18,13 +18,23 @@ export class DrizzleLlmAnalysisRepository implements LlmAnalysisRepository {
     const [row] = await this.dbClient.db
       .insert(llmAnalyses)
       .values({
+        purpose: analysis.purpose,
         signalId: analysis.signalId,
+        strategyId: analysis.strategyId,
+        ticker: analysis.ticker,
         verdict: analysis.verdict,
+        outcome: analysis.outcome,
         // numeric columns round-trip as strings in Drizzle.
-        confidence: analysis.confidence.toString(),
+        confidence:
+          analysis.confidence === null ? null : analysis.confidence.toString(),
         reasoning: analysis.reasoning,
         flaggedRisks: analysis.flaggedRisks,
+        systemPrompt: analysis.systemPrompt,
+        userPrompt: analysis.userPrompt,
+        params: analysis.params,
+        webSearches: analysis.webSearches,
         rawResponse: analysis.rawResponse,
+        errorText: analysis.errorText,
         latencyMs: analysis.latencyMs,
         model: analysis.model,
         contextHash: analysis.contextHash ?? null,

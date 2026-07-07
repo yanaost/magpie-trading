@@ -6,10 +6,15 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { DbClient } from "../infra/infra.module.js";
+import type {
+  LlmAnalysisRepository,
+  PersistedAnalysis,
+} from "../llm/llm.types.js";
 import type { Clock } from "../pipeline/pipeline.types.js";
 import { CrowdingRefreshService } from "./crowding-refresh.service.js";
 import {
   CROWDING_TTL_DAYS,
+  type CrowdingDialog,
   type CrowdingResearcher,
 } from "./crowding.types.js";
 
@@ -45,6 +50,15 @@ class FakeStore {
 const NOW = new Date("2026-07-05T00:00:00.000Z");
 const clock: Clock = { now: () => NOW };
 
+const STUB_DIALOG: CrowdingDialog = {
+  systemPrompt: "sys",
+  userPrompt: "usr",
+  params: { model: "m" },
+  model: "m",
+  rawResponse: "{}",
+  webSearches: null,
+};
+
 function researcherOf(
   ...batches: Array<Array<{ ticker: string; evidence: string }>>
 ): CrowdingResearcher {
@@ -55,9 +69,19 @@ function researcherOf(
       calls();
       const batch = batches[Math.min(i, batches.length - 1)];
       i += 1;
-      return batch ?? [];
+      return { tickers: batch ?? [], dialog: null };
     },
+    describeCall: () => STUB_DIALOG,
   };
+}
+
+/** In-memory LLM-log sink to assert the crowding dialog is recorded (U1). */
+class RecordingLlmLog implements LlmAnalysisRepository {
+  readonly rows: PersistedAnalysis[] = [];
+  async persist(a: PersistedAnalysis): Promise<{ id: string }> {
+    this.rows.push(a);
+    return { id: `row-${this.rows.length}` };
+  }
 }
 
 describe("CrowdingRefreshService", () => {
@@ -129,5 +153,59 @@ describe("CrowdingRefreshService", () => {
     const res = await svc.refresh();
     expect(res.tickers).toEqual([]);
     expect(store.rows).toHaveLength(0);
+  });
+
+  it("logs a crowding_scan dialog row when a researcher returns one (U1)", async () => {
+    const store = new FakeStore();
+    const llmLog = new RecordingLlmLog();
+    const researcher: CrowdingResearcher = {
+      research: async () => ({
+        tickers: [{ ticker: "NVDA", evidence: "hype" }],
+        dialog: { ...STUB_DIALOG, webSearches: [{ query: "crowded longs" }] },
+      }),
+      describeCall: () => STUB_DIALOG,
+    };
+    const svc = new CrowdingRefreshService(
+      { db: store.db } as DbClient,
+      clock,
+      researcher,
+      llmLog,
+    );
+
+    await svc.refresh();
+
+    expect(llmLog.rows).toHaveLength(1);
+    expect(llmLog.rows[0]).toMatchObject({
+      purpose: "crowding_scan",
+      outcome: "proceed",
+      strategyId: "ai-crowding-filter",
+      systemPrompt: "sys",
+      webSearches: [{ query: "crowded longs" }],
+    });
+  });
+
+  it("logs a veto_by_failure row and rethrows when research fails (U1)", async () => {
+    const store = new FakeStore();
+    const llmLog = new RecordingLlmLog();
+    const researcher: CrowdingResearcher = {
+      research: async () => {
+        throw new Error("model refused the crowding-research request");
+      },
+      describeCall: () => STUB_DIALOG,
+    };
+    const svc = new CrowdingRefreshService(
+      { db: store.db } as DbClient,
+      clock,
+      researcher,
+      llmLog,
+    );
+
+    await expect(svc.refresh()).rejects.toThrow(/refused/);
+    expect(llmLog.rows).toHaveLength(1);
+    expect(llmLog.rows[0]).toMatchObject({
+      purpose: "crowding_scan",
+      outcome: "veto_by_failure",
+    });
+    expect(llmLog.rows[0]?.errorText).toMatch(/refused/);
   });
 });

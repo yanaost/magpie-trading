@@ -32,6 +32,8 @@ function toDto(p: StoredProposal) {
   return {
     id: p.id,
     strategyId: p.strategyId,
+    // Cross-link to the LLM dialog that vetted this proposal, if any (U1).
+    signalId: p.signalId ?? null,
     ticker: p.ticker,
     side: p.side,
     qty: p.qty,

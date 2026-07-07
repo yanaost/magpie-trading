@@ -9,6 +9,7 @@ import { MarketDataModule } from "./market-data/market-data.module.js";
 import { DashboardModule } from "./dashboard/dashboard.module.js";
 import { KillSwitchModule } from "./killswitch/killswitch.module.js";
 import { LlmModule } from "./llm/llm.module.js";
+import { LlmLogModule } from "./llm-log/llm-log.module.js";
 import { PipelineModule } from "./pipeline/pipeline.module.js";
 import { ApprovalsModule } from "./approvals/approvals.module.js";
 import { BacktestModule } from "./backtest/backtest.module.js";
@@ -40,6 +41,7 @@ import { DevModule } from "./dev/dev.module.js";
     DashboardModule,
     KillSwitchModule,
     LlmModule,
+    LlmLogModule,
     PipelineModule,
     ApprovalsModule,
     BacktestModule,

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { JournalView } from "@/lib/api";
 import { getSignals } from "@/lib/browser-api";
 
@@ -56,6 +57,16 @@ export default function SignalLog({
                 {r.body ? (
                   <div className="muted" style={{ fontSize: "0.8rem" }}>
                     {r.body}
+                  </div>
+                ) : null}
+                {r.refType === "signal" && r.refId ? (
+                  <div style={{ marginTop: "0.25rem" }}>
+                    <Link
+                      className="badge"
+                      href={`/llm-log?signalId=${encodeURIComponent(r.refId)}`}
+                    >
+                      LLM dialog →
+                    </Link>
                   </div>
                 ) : null}
               </td>

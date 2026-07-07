@@ -63,6 +63,9 @@ export default async function Dashboard(): Promise<ReactNode> {
           <p className="muted">Single-user control surface · Phase 1</p>
         </div>
         <div className="row" style={{ gap: "0.5rem" }}>
+          <Link className="badge" href="/llm-log">
+            LLM log →
+          </Link>
           <Link className="badge" href="/journal">
             Journal →
           </Link>
@@ -95,7 +98,7 @@ export default async function Dashboard(): Promise<ReactNode> {
       <h2>Open positions</h2>
       <Positions initialPositions={positions} initialPortfolio={portfolio} />
 
-      <h2>Signal log</h2>
+      <h2 id="signal-log">Signal log</h2>
       <SignalLog initial={signals} />
 
       <h2>Candle counts</h2>

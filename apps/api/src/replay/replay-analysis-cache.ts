@@ -26,7 +26,9 @@ export class DrizzleAnalysisCache implements AnalysisCache {
       .where(eq(llmAnalyses.contextHash, contextHash))
       .orderBy(desc(llmAnalyses.createdAt))
       .limit(1);
-    if (!row) return null;
+    // A verdict-less row (crowding scan) is never a usable cached analysis and
+    // never carries a context hash anyway → treat it as a miss (→ engine stubs).
+    if (!row || row.verdict === null) return null;
     return {
       verdict: row.verdict,
       confidence: row.confidence === null ? 0 : Number(row.confidence),

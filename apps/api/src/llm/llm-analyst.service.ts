@@ -23,6 +23,8 @@ import {
   LLM_ANALYST_CLIENT,
   type LlmAnalysisRepository,
   type LlmAnalystClient,
+  type LlmCallDescription,
+  type WebSearchInvocation,
 } from "./llm.types.js";
 import { analysisContextHash } from "../replay/signal-context-hash.js";
 
@@ -69,12 +71,20 @@ export class LlmAnalystService {
       }, LLM_ANALYSIS_TIMEOUT_MS);
     });
 
+    // Captured up-front so the exact prompt is logged even when the call fails.
+    const description = this.client.describeCall(request);
+
     let analysis: LLMAnalysis;
+    let webSearches: WebSearchInvocation[] | null = null;
+    // Failures (timeout/transport/parse/refusal) are logged distinctly from a
+    // legitimate model veto, so the log can show `veto_by_failure` + the error.
+    let failure: string | null = null;
     try {
       const rawResult = await Promise.race([
         this.client.analyze(request, controller.signal),
         timeout,
       ]);
+      webSearches = rawResult.webSearches;
       analysis = parseLlmAnalysis(rawResult.candidate, {
         model: rawResult.model,
         latencyMs: Date.now() - started,
@@ -84,6 +94,7 @@ export class LlmAnalystService {
       controller.abort();
       const reason = describeError(err);
       this.logger.warn(`${request.ticker}: ${reason} → veto`);
+      failure = reason;
       analysis = vetoAnalysis(reason, {
         model: this.client.model,
         latencyMs: Date.now() - started,
@@ -92,18 +103,27 @@ export class LlmAnalystService {
       clearTimeout(timer);
     }
 
-    await this.persistSafely(request, analysis);
+    await this.persistSafely(
+      request,
+      analysis,
+      description,
+      webSearches,
+      failure,
+    );
     return analysis;
   }
 
   /**
-   * Record the analysis, tolerating a persistence failure (logged, not thrown)
-   * so a DB hiccup can never flip a verdict or crash the pipeline. Skips
-   * persistence for un-persisted signals (no FK to satisfy).
+   * Record the analysis with its full dialog, tolerating a persistence failure
+   * (logged, not thrown) so a DB hiccup can never flip a verdict or crash the
+   * pipeline. Skips persistence for un-persisted signals (no FK to satisfy).
    */
   private async persistSafely(
     request: AnalysisRequest,
     analysis: LLMAnalysis,
+    description: LlmCallDescription,
+    webSearches: WebSearchInvocation[] | null,
+    failure: string | null,
   ): Promise<void> {
     if (!request.signalId) {
       this.logger.debug(
@@ -113,12 +133,24 @@ export class LlmAnalystService {
     }
     try {
       await this.repo.persist({
+        purpose: "signal_analysis",
         signalId: request.signalId,
+        strategyId: request.strategyId,
+        ticker: request.ticker,
+        // A failed call still produces a deterministic `veto` verdict (the trust
+        // boundary's fail-safe); `outcome` is what distinguishes a real model
+        // veto from a `veto_by_failure`, so keep the verdict and vary the outcome.
         verdict: analysis.verdict,
+        outcome: failure ? "veto_by_failure" : analysis.verdict,
         confidence: analysis.confidence,
         reasoning: analysis.reasoning,
         flaggedRisks: analysis.flaggedRisks,
+        systemPrompt: description.systemPrompt,
+        userPrompt: description.userPrompt,
+        params: description.params,
+        webSearches,
         rawResponse: analysis.raw ?? null,
+        errorText: failure,
         latencyMs: analysis.latencyMs ?? null,
         model: analysis.model ?? this.client.model,
         // Recorded so a later replay can reuse this real verdict (T3.1).

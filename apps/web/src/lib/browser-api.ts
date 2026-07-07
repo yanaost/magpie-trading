@@ -8,6 +8,9 @@ import type {
   BacktestRunView,
   JournalView,
   KillSwitchState,
+  LlmLogDetail,
+  LlmLogPage,
+  LlmLogQuery,
   PerformanceView,
   PortfolioSummary,
   PositionView,
@@ -78,6 +81,20 @@ export const runBacktests = (
 
 export const getKillSwitch = (): Promise<KillSwitchState> =>
   req<KillSwitchState>("/killswitch");
+
+/** A page of LLM dialog-log rows, filtered/paginated (U1). */
+export const getLlmLogs = (query: LlmLogQuery = {}): Promise<LlmLogPage> => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const qs = params.toString();
+  return req<LlmLogPage>(`/llm-logs${qs ? `?${qs}` : ""}`);
+};
+
+/** The full captured dialog for one log row (U1). */
+export const getLlmLog = (id: string): Promise<LlmLogDetail> =>
+  req<LlmLogDetail>(`/llm-logs/${encodeURIComponent(id)}`);
 
 export async function getPendingProposals(): Promise<ProposalView[]> {
   const { proposals } = await req<{ proposals: ProposalView[] }>("/proposals");

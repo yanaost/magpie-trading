@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { io, type Socket } from "socket.io-client";
 import type { ProposalView } from "@/lib/api";
 import {
@@ -89,6 +90,16 @@ export default function Approvals({
               <td>
                 {p.side.toUpperCase()} {p.qty} {p.ticker} @ {p.entry}
                 <span className="muted"> · {p.executionTarget}</span>
+                {p.signalId ? (
+                  <div style={{ marginTop: "0.25rem" }}>
+                    <Link
+                      className="badge"
+                      href={`/llm-log?signalId=${encodeURIComponent(p.signalId)}`}
+                    >
+                      LLM dialog →
+                    </Link>
+                  </div>
+                ) : null}
               </td>
               <td>{p.stop}</td>
               <td>

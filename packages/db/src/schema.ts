@@ -133,22 +133,57 @@ export const signals = pgTable(
   ],
 );
 
-/** llm_analyses — structured verdict per signal (spec §7). */
+/**
+ * llm_analyses — the full LLM dialog log (spec §7, U1). One append-only row per
+ * model call: signal risk analyses AND the nightly crowding scan. Beyond the
+ * verdict it stores the complete request (system/user prompt, model params, and
+ * any web-search invocations) so the admin can read exactly what Magpie asked
+ * and what Claude answered. Failures are first-class rows (`outcome`
+ * `veto_by_failure` + `error_text`), never dropped.
+ */
 export const llmAnalyses = pgTable(
   "llm_analyses",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    signalId: uuid("signal_id")
-      .notNull()
-      .references(() => signals.id),
-    verdict: verdictEnum("verdict").notNull(),
+    /** What kind of call this was: per-signal analysis or the crowding scan. */
+    purpose: text("purpose").notNull().default("signal_analysis"),
+    /**
+     * Owning signal, when the call analyzed one. Nullable: the crowding scan and
+     * un-persisted/replay signals have no signal row to reference.
+     */
+    signalId: uuid("signal_id").references(() => signals.id),
+    /** Owning strategy, denormalized for filtering (crowding uses its own id). */
+    strategyId: text("strategy_id"),
+    /** Symbol under analysis, denormalized for filtering. Null for the scan. */
+    ticker: text("ticker"),
+    /**
+     * The model's verdict — proceed/veto. Nullable: the crowding scan produces
+     * no verdict, and a failed call has none (see `outcome`).
+     */
+    verdict: verdictEnum("verdict"),
+    /**
+     * What actually happened, always set: "proceed" | "veto" | "veto_by_failure".
+     * Failures (timeout, transport, parse, refusal) are recorded here with the
+     * error in `error_text` rather than silently dropped.
+     */
+    outcome: text("outcome"),
     confidence: numeric("confidence", { precision: 5, scale: 4 }), // 0..1
     reasoning: text("reasoning"),
     flaggedRisks: jsonb("flagged_risks")
       .$type<string[]>()
       .notNull()
       .default([]),
+    /** Verbatim system prompt sent to the model (never contains secrets). */
+    systemPrompt: text("system_prompt"),
+    /** Verbatim user-turn text sent to the model. */
+    userPrompt: text("user_prompt"),
+    /** Request params: model, max_tokens, whether web search was enabled, etc. */
+    params: jsonb("params").$type<Record<string, unknown>>(),
+    /** Web-search tool invocations the model made, when the SDK surfaced them. */
+    webSearches: jsonb("web_searches").$type<{ query: string }[]>(),
     rawResponse: text("raw_response"),
+    /** Error text for a failed call (`outcome = veto_by_failure`). */
+    errorText: text("error_text"),
     latencyMs: integer("latency_ms"),
     model: text("model").notNull(),
     /**
@@ -162,6 +197,9 @@ export const llmAnalyses = pgTable(
   (t) => [
     index("llm_analyses_signal_idx").on(t.signalId),
     index("llm_analyses_context_hash_idx").on(t.contextHash),
+    index("llm_analyses_purpose_idx").on(t.purpose),
+    index("llm_analyses_ticker_idx").on(t.ticker),
+    index("llm_analyses_created_idx").on(t.createdAt),
   ],
 );
 

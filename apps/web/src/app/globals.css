@@ -169,3 +169,83 @@ button:hover {
   color: var(--down);
   font-size: 0.85rem;
 }
+
+/* LLM dialog log (U1) */
+.badge.proceed {
+  border-color: var(--up);
+  color: var(--up);
+}
+.badge.veto {
+  border-color: var(--down);
+  color: var(--down);
+}
+.badge.fail {
+  border-color: var(--degraded);
+  color: var(--degraded);
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.filter-bar input,
+.filter-bar select {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* An expandable log row toggles its detail on click. */
+.log-row {
+  cursor: pointer;
+}
+.log-row:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dialog {
+  display: grid;
+  gap: 1rem;
+  padding: 0.5rem 0.25rem;
+}
+
+.dialog h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.mono,
+.dialog pre {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.dialog pre {
+  margin: 0;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.pager {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}

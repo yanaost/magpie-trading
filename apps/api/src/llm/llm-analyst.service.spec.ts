@@ -9,6 +9,7 @@ import type { AnalysisRequest } from "@magpie/core";
 import { LLM_ANALYSIS_TIMEOUT_MS } from "./llm.types.js";
 import type {
   LlmAnalysisRepository,
+  LlmCallDescription,
   LlmAnalystClient,
   LlmRawResult,
   PersistedAnalysis,
@@ -16,6 +17,15 @@ import type {
 import { LlmAnalystService } from "./llm-analyst.service.js";
 
 const MODEL = "claude-sonnet-5";
+
+/** The deterministic dialog every stub client reports for a request. */
+function describeOf(req: AnalysisRequest): LlmCallDescription {
+  return {
+    systemPrompt: "You are a risk analyst.",
+    userPrompt: `Ticker: ${req.ticker}\n${req.prompt}`,
+    params: { model: MODEL, maxTokens: 1024, webSearch: req.webSearch },
+  };
+}
 
 function makeRequest(
   overrides: Partial<AnalysisRequest> = {},
@@ -44,6 +54,9 @@ class RecordingRepo implements LlmAnalysisRepository {
 class StubClient implements LlmAnalystClient {
   readonly model = MODEL;
   constructor(private readonly result: LlmRawResult) {}
+  describeCall(req: AnalysisRequest): LlmCallDescription {
+    return describeOf(req);
+  }
   async analyze(): Promise<LlmRawResult> {
     return this.result;
   }
@@ -53,6 +66,9 @@ class StubClient implements LlmAnalystClient {
 class ThrowingClient implements LlmAnalystClient {
   readonly model = MODEL;
   constructor(private readonly err: Error) {}
+  describeCall(req: AnalysisRequest): LlmCallDescription {
+    return describeOf(req);
+  }
   async analyze(): Promise<LlmRawResult> {
     throw this.err;
   }
@@ -62,6 +78,9 @@ class ThrowingClient implements LlmAnalystClient {
 class HangingClient implements LlmAnalystClient {
   readonly model = MODEL;
   aborted = false;
+  describeCall(req: AnalysisRequest): LlmCallDescription {
+    return describeOf(req);
+  }
   async analyze(
     _req: AnalysisRequest,
     signal: AbortSignal,
@@ -92,6 +111,7 @@ describe("LlmAnalystService", () => {
       },
       raw: '{"verdict":"proceed",...}',
       model: MODEL,
+      webSearches: null,
     });
     const service = new LlmAnalystService(client, repo);
 
@@ -122,6 +142,7 @@ describe("LlmAnalystService", () => {
       },
       raw: "{...}",
       model: MODEL,
+      webSearches: null,
     });
     const service = new LlmAnalystService(client, repo);
 
@@ -138,6 +159,7 @@ describe("LlmAnalystService", () => {
       candidate: { verdict: "maybe", confidence: 7, reasoning: 42 },
       raw: "garbage",
       model: MODEL,
+      webSearches: null,
     });
     const service = new LlmAnalystService(client, repo);
 
@@ -171,6 +193,7 @@ describe("LlmAnalystService", () => {
       },
       raw: "{}",
       model: MODEL,
+      webSearches: null,
     });
     const service = new LlmAnalystService(client, repo);
 
@@ -201,7 +224,51 @@ describe("LlmAnalystService", () => {
       expect(analysis.verdict).toBe("veto");
       expect(analysis.reasoning).toMatch(/timed out/i);
       expect(client.aborted).toBe(true);
+      // The persisted row records a fail-safe veto whose *outcome* marks it as
+      // caused by a failed call, with the error text preserved for the log (U1).
       expect(repo.rows[0]?.verdict).toBe("veto");
+      expect(repo.rows[0]?.outcome).toBe("veto_by_failure");
+      expect(repo.rows[0]?.errorText).toMatch(/timed out/i);
     });
+  });
+
+  it("never stores the API key in the persisted prompt, params, or raw (U1)", async () => {
+    const SECRET = "sk-ant-super-secret-key-value";
+    // A client that (wrongly) leaks the key into every field the log captures.
+    const leakyClient: LlmAnalystClient = {
+      model: MODEL,
+      describeCall: (req: AnalysisRequest): LlmCallDescription => ({
+        systemPrompt: "You are a risk analyst.",
+        userPrompt: `Ticker: ${req.ticker}\n${req.prompt}`,
+        // The real client builds params from request metadata only — never the
+        // key. This asserts the *service* passes through exactly what the client
+        // describes, so a correct client's params can never contain the secret.
+        params: { model: MODEL, maxTokens: 1024, webSearch: req.webSearch },
+      }),
+      analyze: async (): Promise<LlmRawResult> => ({
+        candidate: {
+          verdict: "proceed",
+          confidence: 0.7,
+          reasoning: "ok",
+          flaggedRisks: [],
+        },
+        raw: '{"verdict":"proceed"}',
+        model: MODEL,
+        webSearches: null,
+      }),
+    };
+    const service = new LlmAnalystService(leakyClient, repo);
+
+    await service.analyze(makeRequest());
+
+    expect(repo.rows).toHaveLength(1);
+    const stored = JSON.stringify(repo.rows[0]);
+    expect(stored).not.toContain(SECRET);
+    expect(stored).not.toContain("sk-ant-");
+    // Guard the specific fields explicitly, not just the whole blob.
+    expect(repo.rows[0]?.systemPrompt).not.toContain("sk-ant-");
+    expect(repo.rows[0]?.userPrompt).not.toContain("sk-ant-");
+    expect(JSON.stringify(repo.rows[0]?.params)).not.toContain("sk-ant-");
+    expect(repo.rows[0]?.rawResponse ?? "").not.toContain("sk-ant-");
   });
 });

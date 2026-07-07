@@ -14,8 +14,10 @@ import { APP_CONFIG, type AppConfig } from "../config/env.schema.js";
 import { LLM_OUTPUT_JSON_SCHEMA } from "./llm-output.schema.js";
 import {
   LLM_ANALYSIS_TIMEOUT_MS,
+  type LlmCallDescription,
   type LlmAnalystClient,
   type LlmRawResult,
+  type WebSearchInvocation,
 } from "./llm.types.js";
 
 /** Web-search tool version paired with current Sonnet/Opus models (skill: API drift). */
@@ -55,6 +57,32 @@ function extractText(content: Anthropic.ContentBlock[]): string {
     .join("");
 }
 
+/** A server_tool_use block for the web-search tool, narrowed for extraction. */
+interface ServerToolUseBlock {
+  type: "server_tool_use";
+  name: string;
+  input?: { query?: unknown };
+}
+
+/**
+ * Pull the web-search queries the model issued from the response blocks, for the
+ * dialog log. Returns null when the model made no searches (or the SDK exposed
+ * none) so the audit clearly distinguishes "no search" from "not captured".
+ */
+function extractWebSearches(
+  content: Anthropic.ContentBlock[],
+): WebSearchInvocation[] | null {
+  const searches: WebSearchInvocation[] = [];
+  for (const block of content as Array<{ type: string }>) {
+    if (block.type !== "server_tool_use") continue;
+    const tool = block as ServerToolUseBlock;
+    if (tool.name !== "web_search") continue;
+    const query = tool.input?.query;
+    if (typeof query === "string" && query.length > 0) searches.push({ query });
+  }
+  return searches.length > 0 ? searches : null;
+}
+
 @Injectable()
 export class AnthropicAnalystClient implements LlmAnalystClient {
   readonly model: string;
@@ -67,6 +95,22 @@ export class AnthropicAnalystClient implements LlmAnalystClient {
     this.client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
   }
 
+  /** The max output tokens for one analysis call — surfaced in the dialog log. */
+  private static readonly MAX_TOKENS = 1024;
+
+  describeCall(request: AnalysisRequest): LlmCallDescription {
+    return {
+      systemPrompt: SYSTEM_PROMPT,
+      userPrompt: renderRequest(request),
+      params: {
+        model: this.model,
+        maxTokens: AnthropicAnalystClient.MAX_TOKENS,
+        webSearch: request.webSearch,
+        tools: request.webSearch ? [WEB_SEARCH_TOOL.name] : [],
+      },
+    };
+  }
+
   async analyze(
     request: AnalysisRequest,
     signal: AbortSignal,
@@ -74,7 +118,7 @@ export class AnthropicAnalystClient implements LlmAnalystClient {
     const message = await this.client.messages.create(
       {
         model: this.model,
-        max_tokens: 1024,
+        max_tokens: AnthropicAnalystClient.MAX_TOKENS,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: renderRequest(request) }],
         ...(request.webSearch ? { tools: [WEB_SEARCH_TOOL] } : {}),
@@ -91,6 +135,11 @@ export class AnthropicAnalystClient implements LlmAnalystClient {
     }
     // JSON.parse can throw on truncated/empty output; the service vetoes on it.
     const candidate: unknown = JSON.parse(raw);
-    return { candidate, raw, model: this.model };
+    return {
+      candidate,
+      raw,
+      model: this.model,
+      webSearches: extractWebSearches(message.content),
+    };
   }
 }

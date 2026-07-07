@@ -12,9 +12,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Inject, Injectable } from "@nestjs/common";
 import { APP_CONFIG, type AppConfig } from "../config/env.schema.js";
+import type { WebSearchInvocation } from "../llm/llm.types.js";
 import type {
   CrowdedTickerEvidence,
+  CrowdingDialog,
   CrowdingResearcher,
+  CrowdingResearchResult,
 } from "./crowding.types.js";
 
 const WEB_SEARCH_TOOL = {
@@ -26,6 +29,13 @@ const WEB_SEARCH_TOOL = {
 // so give the request generous headroom. Combined with streaming below, this
 // avoids the SDK's request-timeout cutting off a real, in-progress research run.
 const RESEARCH_TIMEOUT_MS = 300_000;
+
+/** Per-turn output budget (see note at the call site). Logged in the dialog. */
+const MAX_TOKENS = 8192;
+
+/** The single user-turn prompt for the crowding scan. */
+const USER_PROMPT =
+  "List the US equities that are over-recommended / crowded-long right now.";
 
 const SYSTEM_PROMPT = [
   "You track market sentiment for an automated trading system.",
@@ -65,7 +75,23 @@ export class AnthropicCrowdingResearcher implements CrowdingResearcher {
     this.client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
   }
 
-  async research(): Promise<CrowdedTickerEvidence[]> {
+  describeCall(): CrowdingDialog {
+    return {
+      systemPrompt: SYSTEM_PROMPT,
+      userPrompt: USER_PROMPT,
+      params: {
+        model: this.model,
+        maxTokens: MAX_TOKENS,
+        webSearch: true,
+        tools: [WEB_SEARCH_TOOL.name],
+      },
+      model: this.model,
+      rawResponse: null,
+      webSearches: null,
+    };
+  }
+
+  async research(): Promise<CrowdingResearchResult> {
     // Stream rather than await a single response: web-search research is a long,
     // multi-round-trip call, and streaming keeps the connection alive so it isn't
     // cut off by request timeouts (SDK guidance for long / tool-using requests).
@@ -77,15 +103,9 @@ export class AnthropicCrowdingResearcher implements CrowdingResearcher {
           // assistant turn, so the final turn must fit up to 15 tickers with an
           // evidence sentence each. 2048 truncated that final JSON on thorough
           // runs (empty/partial text → parse failure); 8192 leaves ample room.
-          max_tokens: 8192,
+          max_tokens: MAX_TOKENS,
           system: SYSTEM_PROMPT,
-          messages: [
-            {
-              role: "user",
-              content:
-                "List the US equities that are over-recommended / crowded-long right now.",
-            },
-          ],
+          messages: [{ role: "user", content: USER_PROMPT }],
           tools: [WEB_SEARCH_TOOL],
           output_config: {
             format: { type: "json_schema", schema: OUTPUT_SCHEMA },
@@ -116,14 +136,52 @@ export class AnthropicCrowdingResearcher implements CrowdingResearcher {
       );
     }
     const parsed = JSON.parse(text) as { crowded?: CrowdedTickerEvidence[] };
-    return parsed.crowded ?? [];
+    const dialog: CrowdingDialog = {
+      ...this.describeCall(),
+      rawResponse: text,
+      webSearches: extractWebSearches(message.content),
+    };
+    return { tickers: parsed.crowded ?? [], dialog };
   }
 }
 
-/** Offline/CI researcher — reports nothing crowded. */
+/** A server_tool_use block for the web-search tool, narrowed for extraction. */
+interface ServerToolUseBlock {
+  type: "server_tool_use";
+  name: string;
+  input?: { query?: unknown };
+}
+
+/** Pull the web-search queries the model issued, for the dialog log (U1). */
+function extractWebSearches(
+  content: Anthropic.ContentBlock[],
+): WebSearchInvocation[] | null {
+  const searches: WebSearchInvocation[] = [];
+  for (const block of content as Array<{ type: string }>) {
+    if (block.type !== "server_tool_use") continue;
+    const tool = block as ServerToolUseBlock;
+    if (tool.name !== "web_search") continue;
+    const query = tool.input?.query;
+    if (typeof query === "string" && query.length > 0) searches.push({ query });
+  }
+  return searches.length > 0 ? searches : null;
+}
+
+/** Offline/CI researcher — reports nothing crowded, logs no dialog. */
 @Injectable()
 export class NullCrowdingResearcher implements CrowdingResearcher {
-  async research(): Promise<CrowdedTickerEvidence[]> {
-    return [];
+  describeCall(): CrowdingDialog {
+    return {
+      systemPrompt: "",
+      userPrompt: "",
+      params: {},
+      model: "null",
+      rawResponse: null,
+      webSearches: null,
+    };
+  }
+
+  async research(): Promise<CrowdingResearchResult> {
+    return { tickers: [], dialog: null };
   }
 }

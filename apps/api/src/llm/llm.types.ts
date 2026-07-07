@@ -17,6 +17,26 @@ export const LLM_ANALYSIS_REPOSITORY = Symbol("LLM_ANALYSIS_REPOSITORY");
 /** Hard wall-clock ceiling for a single analysis call (spec §4.2: 30s → veto). */
 export const LLM_ANALYSIS_TIMEOUT_MS = 30_000;
 
+/** One web-search invocation the model made during a call (U1 dialog log). */
+export interface WebSearchInvocation {
+  /** The search query the model issued. */
+  query: string;
+}
+
+/**
+ * The request side of one model call, captured deterministically for the dialog
+ * log (U1). Holds exactly what was sent — never any secret (the API key lives in
+ * the SDK client, never in these fields).
+ */
+export interface LlmCallDescription {
+  /** Verbatim system prompt. */
+  systemPrompt: string;
+  /** Verbatim user-turn text. */
+  userPrompt: string;
+  /** Request params (model, max_tokens, web-search enabled, …) — no secrets. */
+  params: Record<string, unknown>;
+}
+
 /**
  * The raw, still-untrusted result of one model call. `candidate` is fed
  * straight into `parseLlmAnalysis`, which vetoes if it fails schema validation,
@@ -30,6 +50,8 @@ export interface LlmRawResult {
   raw: string;
   /** The model id that produced it. */
   model: string;
+  /** Web-search invocations the model made, if the SDK surfaced any. */
+  webSearches: WebSearchInvocation[] | null;
 }
 
 /**
@@ -47,16 +69,38 @@ export interface LlmAnalystClient {
    * @param signal - abort signal wired to the service-level timeout
    */
   analyze(request: AnalysisRequest, signal: AbortSignal): Promise<LlmRawResult>;
+  /**
+   * Describe the request that {@link analyze} would send, without calling the
+   * model. Lets the service log the exact prompt even when the call fails.
+   * @param request - what the model must verify (never sizes or prices)
+   */
+  describeCall(request: AnalysisRequest): LlmCallDescription;
 }
 
-/** A single analysis ready to persist to `llm_analyses`. */
+/**
+ * A single analysis ready to persist to `llm_analyses` (U1: the full dialog).
+ * `signalId`/`verdict`/`confidence` are nullable because the crowding scan and
+ * failed calls have none.
+ */
 export interface PersistedAnalysis {
-  signalId: string;
-  verdict: "proceed" | "veto";
-  confidence: number;
-  reasoning: string;
+  /** signal_analysis | crowding_scan. */
+  purpose: "signal_analysis" | "crowding_scan";
+  signalId: string | null;
+  strategyId: string | null;
+  ticker: string | null;
+  verdict: "proceed" | "veto" | null;
+  /** What actually happened — always set. */
+  outcome: "proceed" | "veto" | "veto_by_failure";
+  confidence: number | null;
+  reasoning: string | null;
   flaggedRisks: string[];
+  systemPrompt: string | null;
+  userPrompt: string | null;
+  params: Record<string, unknown> | null;
+  webSearches: WebSearchInvocation[] | null;
   rawResponse: string | null;
+  /** Error text when `outcome === "veto_by_failure"`. */
+  errorText: string | null;
   latencyMs: number | null;
   model: string;
   /** Content hash of the request, for replay cache lookup (T3.1). */

@@ -18,6 +18,8 @@ import { LLM_ANALYSIS_REPOSITORY, LLM_ANALYST_CLIENT } from "./llm.types.js";
       useClass: DrizzleLlmAnalysisRepository,
     },
   ],
-  exports: [LlmAnalystService],
+  // Export the analysis repository too so the crowding scan (T2.4, wired in
+  // PipelineModule) can log its own dialog rows to the same audit trail (U1).
+  exports: [LlmAnalystService, LLM_ANALYSIS_REPOSITORY],
 })
 export class LlmModule {}
