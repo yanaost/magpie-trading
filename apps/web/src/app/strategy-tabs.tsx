@@ -68,6 +68,14 @@ export default function StrategyTabs({
 
   const current = roster.find((s) => s.id === active) ?? roster[0]!;
 
+  // A mode/target edit updates the parent roster right away so the badge and the
+  // panel survive a tab switch before the next background poll lands.
+  const applyChange = (updated: StrategySummary): void => {
+    setRoster((prev) =>
+      prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)),
+    );
+  };
+
   return (
     <div>
       <div className="row" role="tablist" style={tabBarStyle}>
@@ -95,6 +103,7 @@ export default function StrategyTabs({
         strategy={current}
         positions={positions.filter((p) => p.strategyId === current.id)}
         signals={signals.filter((s) => s.strategyId === current.id)}
+        onChanged={applyChange}
       />
     </div>
   );
@@ -105,10 +114,12 @@ function StrategyPanel({
   strategy,
   positions,
   signals,
+  onChanged,
 }: {
   strategy: StrategySummary;
   positions: PositionView[];
   signals: JournalView[];
+  onChanged?: (updated: StrategySummary) => void;
 }): ReactNode {
   return (
     <div className="panel" style={{ marginTop: "0.75rem" }}>
@@ -122,7 +133,7 @@ function StrategyPanel({
           </tr>
         </thead>
         <tbody>
-          <StrategyControls strategy={strategy} />
+          <StrategyControls strategy={strategy} onChanged={onChanged} />
         </tbody>
       </table>
 

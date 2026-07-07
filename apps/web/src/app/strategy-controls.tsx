@@ -27,8 +27,10 @@ function badgeTone(mode: string): string {
  */
 export default function StrategyControls({
   strategy,
+  onChanged,
 }: {
   strategy: StrategySummary;
+  onChanged?: (updated: StrategySummary) => void;
 }): ReactNode {
   const [mode, setMode] = useState(strategy.mode);
   const [target, setTarget] = useState(strategy.target);
@@ -60,6 +62,10 @@ export default function StrategyControls({
       const updated = await setStrategy(strategy.id, patch);
       setMode(updated.mode);
       setTarget(updated.target);
+      // Lift the change to the parent roster immediately so switching tabs
+      // (or the panel remounting) reflects the new value instead of the stale
+      // SSR snapshot until the next 10s poll.
+      onChanged?.(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
