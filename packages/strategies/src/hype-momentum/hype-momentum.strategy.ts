@@ -30,6 +30,7 @@ import {
   type RiskParams,
   type StrategyTimeframe,
   type Strategy,
+  type StrategyMeta,
   type Ticker,
   DEFAULT_RISK_PARAMS,
 } from "@magpie/core";
@@ -54,6 +55,29 @@ export class HypeMomentumStrategy implements Strategy {
   readonly timeframe: StrategyTimeframe = "swing";
   readonly defaultMode: Mode = "APPROVE";
   readonly riskParams: RiskParams;
+  readonly meta: StrategyMeta = {
+    summary:
+      "Rides the early part of a breakout when a stock jumps on real news with " +
+      "a big volume spike. The goal is to catch the fast first move and get out " +
+      "quickly when it stalls — and always before the next earnings report.",
+    mechanic: {
+      trigger: [
+        "The stock breaks above resistance on a volume spike well above its 20-day average",
+        "There is a genuine catalyst behind the move (news, not just chatter)",
+        "The next earnings date is far enough away to exit before it",
+      ],
+      exitPlan: [
+        "Pre-written stop below the breakout level",
+        "Exit fast when the move stalls or loses its moving-average support",
+        "Always flat before the next earnings print",
+      ],
+      llmRole:
+        "Claude confirms the catalyst is real and the move is still early-stage, not already parabolic and late.",
+      dataNeeds:
+        "Trending / most-bought list and earnings-date feeds (not yet wired)",
+    },
+    dataReady: false,
+  };
 
   private readonly params: HypeMomentumParams;
   private readonly candidateProvider: HypeCandidateProvider;

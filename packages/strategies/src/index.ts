@@ -24,6 +24,7 @@ export * from "./squeeze-scalp/short-interest.js";
 export * from "./squeeze-scalp/squeeze-detector.js";
 export * from "./squeeze-scalp/squeeze-scalp.strategy.js";
 export * from "./registry.js";
+export * from "./metadata.js";
 export * from "./variants.js";
 
 import type { Strategy } from "@magpie/core";

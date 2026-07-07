@@ -1101,3 +1101,35 @@ deps)` looks the strategy up in `VARIANT_BUILDERS` and constructs it with the
   non-default cash, trigger a proposal, confirm risk $ ≈ 1–2% of _that_ cash) is
   covered for SIM by the unit tests; the live PAPER round-trip is pending the
   paper account.
+
+## U2 — In-product "About this strategy" (strategy description & mechanics)
+
+- **Metadata lives on the `Strategy` interface (core), not in the DB.** Added
+  `StrategyMeta`/`StrategyMechanic` to `packages/core/src/strategy.ts` and a
+  required `readonly meta: StrategyMeta` field on `Strategy`. The 7 executable
+  plugins now carry their own copy, so registering a strategy without a plain-
+  language explainer is a compile error (spec §U2 AC: "every strategy"). This is
+  the additive-fields exception the DoD sanctions for `packages/core` — no
+  risk/order logic touched. `packages/db` stays free of strategy content (it does
+  not depend on core/strategies).
+- **The 8th roster entry, `ai-crowding-filter`, is a filter, not a `Strategy`.**
+  Its meta is a literal in `packages/strategies/src/metadata.ts` alongside
+  `buildStrategyMetaById()`, which maps every `loadStrategies()` instance's
+  `.meta` by id and adds the filter — so the API serves one uniform map of 8.
+- **`dataReady` = live feed wired.** Exactly two are true: `qual-sphb` (live
+  QUAL/SPHB weekly candles) and `ai-crowding-filter` (Claude web-research scan,
+  live when `ANTHROPIC_API_KEY` is set). The other 6 (earnings-fade,
+  hype-momentum, squeeze-scalp, snapback, friday-monday-flow, valuation-gravity)
+  ride static/injected stub providers and render a "data feed not wired" chip so
+  an operator never mistakes a WATCH-only stub for a tradeable setup (spec AC:
+  "currently 6").
+- **qual-sphb text is derived from config, not hardcoded.** `buildMeta(params)`
+  interpolates the entry band, stop %, and SMA window into the trigger/exit prose
+  so tuning the params re-labels the About card (tested: default shows "5%" /
+  "20-week"; `{entryBand:0.09, smaWeeks:30}` shows "9%" / "30-week" and no "5%").
+- **Wiring.** `dashboard.service.ts` attaches `meta` to each `StrategySummary`
+  (module-level `STRATEGY_META_BY_ID`, `null` when unknown). Web renders a native
+  `<details open>` "About this strategy" card at the top of each tab
+  (`strategy-tabs.tsx` `AboutStrategy`): summary, stub-feed warning chip, entry
+  checklist, exit plan, Claude's role, data needs. Gate green: api 191, strategies
+  148 (+4 metadata tests), typecheck/eslint/prettier + full suite clean.

@@ -35,6 +35,7 @@ import {
   type RiskParams,
   type StrategyTimeframe,
   type Strategy,
+  type StrategyMeta,
   type Ticker,
   DEFAULT_RISK_PARAMS,
 } from "@magpie/core";
@@ -76,6 +77,27 @@ export class EarningsFadeStrategy implements Strategy {
   readonly timeframe: StrategyTimeframe = "swing";
   readonly defaultMode: Mode = "WATCH";
   readonly riskParams: RiskParams;
+  readonly meta: StrategyMeta = {
+    summary:
+      "After a company reports genuinely bad earnings, the first dip-buying " +
+      "bounce usually fails and the slide resumes. This strategy bets against " +
+      "that failing bounce. In a long-only account it mostly acts as a " +
+      "'do-not-buy this dip' warning rather than placing a trade.",
+    mechanic: {
+      trigger: [
+        "The stock reported an earnings miss or lowered its guidance in the last few sessions",
+        "Its post-earnings bounce stalls below the high of the reaction day (the bounce is failing)",
+      ],
+      exitPlan: [
+        "Stop placed above the reaction-day high — if price reclaims it, the fade thesis is broken",
+        "Covered as the renewed downtrend plays out; the true expression is long puts, noted as an alternative",
+      ],
+      llmRole:
+        "Claude confirms the report was a real miss or guide-down, not a beat that merely dipped on profit-taking.",
+      dataNeeds: "Earnings calendar feed of recent reporters (not yet wired)",
+    },
+    dataReady: false,
+  };
 
   private readonly params: EarningsFadeParams;
   private readonly calendar: CalendarProvider;

@@ -38,6 +38,7 @@ import {
   type RiskParams,
   type StrategyTimeframe,
   type Strategy,
+  type StrategyMeta,
   type Ticker,
   DEFAULT_RISK_PARAMS,
 } from "@magpie/core";
@@ -105,6 +106,28 @@ export class SnapbackStrategy implements Strategy {
   readonly timeframe: StrategyTimeframe = "intraday";
   readonly defaultMode: Mode = "AUTO";
   readonly riskParams: RiskParams;
+  readonly meta: StrategyMeta = {
+    summary:
+      "Bets that a small company whose stock gaps down 10% or more on no real bad " +
+      "news tends to bounce back off the lows the same day. The entire edge is the " +
+      "news check: if the drop is a real problem, there is no bounce. Every trade " +
+      "is closed before the market closes.",
+    mechanic: {
+      trigger: [
+        "A small-cap ($300M–$2B) gaps down 10% or more before the open",
+        "After a 30–60 minute wait, price makes a higher low and reclaims the opening-range low on rising volume",
+      ],
+      exitPlan: [
+        "Stop below the day's low",
+        "Target a half fill-back of the gap toward the prior close",
+        "Force-flatten before the closing bell — never held overnight",
+      ],
+      llmRole:
+        "Claude confirms the gap is a technical or sympathy selloff, not a real earnings miss, dilution, or lawsuit — the highest-stakes check in the system.",
+      dataNeeds: "Pre-market gap screener and intraday candles (not yet wired)",
+    },
+    dataReady: false,
+  };
 
   private readonly params: SnapbackParams;
   private readonly screener: PremarketScreener;

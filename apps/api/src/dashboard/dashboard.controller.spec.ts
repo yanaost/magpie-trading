@@ -26,6 +26,7 @@ const SUMMARY: StrategySummary = {
   timeframe: "swing",
   mode: "APPROVE",
   target: "PAPER",
+  meta: null,
 };
 
 describe("DashboardController.setStrategy", () => {

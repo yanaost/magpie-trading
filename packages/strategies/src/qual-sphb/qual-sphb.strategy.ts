@@ -31,10 +31,41 @@ import {
   type RiskParams,
   type StrategyTimeframe,
   type Strategy,
+  type StrategyMeta,
   type Ticker,
   DEFAULT_RISK_PARAMS,
 } from "@magpie/core";
 import { ratioView, type RatioView } from "./indicators.js";
+
+/**
+ * Build the About-panel metadata from the *live* params so the displayed
+ * thresholds always match the coded values (spec §U2 AC): change `entryBand`,
+ * `smaWeeks` or `stopPct` and the text below changes with it.
+ */
+function buildMeta(params: QualSphbParams): StrategyMeta {
+  const bandPct = (params.entryBand * 100).toFixed(0);
+  const stopPct = (params.stopPct * 100).toFixed(0);
+  return {
+    summary:
+      "Bets that when speculative, high-beta stocks (SPHB) run too far ahead of " +
+      "steady quality stocks (QUAL), that euphoria reverses. It only takes the " +
+      "trade at a fresh stretch and rides the rotation back toward the average.",
+    mechanic: {
+      trigger: [
+        `The SPHB-to-QUAL price ratio closes more than ${bandPct}% above its ${params.smaWeeks}-week average`,
+        `This is a fresh cross above the ${bandPct}% line (the prior week was still below it), not an already-stretched week`,
+      ],
+      exitPlan: [
+        `Protective stop ${stopPct}% below the entry price`,
+        `Thesis exit as the ratio mean-reverts back toward its ${params.smaWeeks}-week average (rotation-driven, not a fixed price target)`,
+      ],
+      llmRole:
+        "Claude confirms the stretch reflects genuine risk-on euphoria worth fading, not a regime shift that justifies the move.",
+      dataNeeds: "Weekly price candles for QUAL and SPHB",
+    },
+    dataReady: true,
+  };
+}
 
 /** Tunable parameters (defaults from the spec). */
 export interface QualSphbParams {
@@ -70,6 +101,7 @@ export class QualSphbStrategy implements Strategy {
   readonly timeframe: StrategyTimeframe = "weekly";
   readonly defaultMode: Mode = "APPROVE";
   readonly riskParams: RiskParams;
+  readonly meta: StrategyMeta;
 
   private readonly params: QualSphbParams;
   /** Latest ratio view cached by `scan`, read synchronously by `manage`. */
@@ -83,6 +115,7 @@ export class QualSphbStrategy implements Strategy {
   ) {
     this.params = { ...DEFAULT_QUAL_SPHB_PARAMS, ...params };
     this.riskParams = riskParams;
+    this.meta = buildMeta(this.params);
   }
 
   async universe(): Promise<Ticker[]> {

@@ -37,6 +37,7 @@ import {
   type RiskParams,
   type StrategyTimeframe,
   type Strategy,
+  type StrategyMeta,
   type Ticker,
   DEFAULT_RISK_PARAMS,
 } from "@magpie/core";
@@ -85,6 +86,29 @@ export class SqueezeScalpStrategy implements Strategy {
   readonly timeframe: StrategyTimeframe = "intraday";
   readonly defaultMode: Mode = "AUTO";
   readonly riskParams: RiskParams;
+  readonly meta: StrategyMeta = {
+    summary:
+      "Bets that a heavily shorted small-cap breaking out on real news squeezes " +
+      "fast as trapped short-sellers rush to cover. It refuses to chase once the " +
+      "move is largely spent, and manages risk with a tight stop and scaled exits.",
+    mechanic: {
+      trigger: [
+        "The stock has more than 20% of its float sold short",
+        "It breaks intraday resistance on a genuine news catalyst, confirmed by volume",
+        "Chase guard: no entry if the stock is already up 30% or more on the day",
+      ],
+      exitPlan: [
+        "Tight stop (roughly 2–4%)",
+        "Bank half the position into the first push higher",
+        "Run the rest toward a larger target",
+      ],
+      llmRole:
+        "Claude confirms the catalyst is real news, not a coordinated social-media pump that would reverse violently.",
+      dataNeeds:
+        "Nightly short-interest roster and intraday candles (not yet wired)",
+    },
+    dataReady: false,
+  };
 
   private readonly params: SqueezeScalpParams;
   private readonly shortInterest: ShortInterestProvider;

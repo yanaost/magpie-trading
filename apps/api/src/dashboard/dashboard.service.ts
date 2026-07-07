@@ -7,7 +7,9 @@ import {
   EXECUTION_TARGETS,
   type ClosedTrade,
   type PerformanceStats,
+  type StrategyMeta,
 } from "@magpie/core";
+import { buildStrategyMetaById } from "@magpie/strategies";
 import { DB_CLIENT, type DbClient } from "../infra/infra.module.js";
 import { SIMULATOR } from "../pipeline/pipeline.providers.js";
 import {
@@ -21,7 +23,15 @@ export interface StrategySummary {
   timeframe: string;
   mode: string;
   target: string;
+  /** Plain-language description & mechanics (spec §U2); null for unknown ids. */
+  meta: StrategyMeta | null;
 }
+
+/**
+ * Static strategy metadata keyed by id, built once at module load (the roster is
+ * fixed for the process lifetime). Covers all eight strategies incl. the filter.
+ */
+const STRATEGY_META_BY_ID = buildStrategyMetaById();
 
 export interface CandleCount {
   ticker: string;
@@ -92,7 +102,10 @@ export class DashboardService {
       })
       .from(schema.strategies)
       .orderBy(schema.strategies.name);
-    return rows;
+    return rows.map((r) => ({
+      ...r,
+      meta: STRATEGY_META_BY_ID[r.id] ?? null,
+    }));
   }
 
   async candleCounts(): Promise<CandleCount[]> {
@@ -191,6 +204,7 @@ export class DashboardService {
       timeframe: before.timeframe,
       mode: change.mode ?? before.mode,
       target: change.target ?? before.target,
+      meta: STRATEGY_META_BY_ID[before.id] ?? null,
     };
   }
 

@@ -30,3 +30,5 @@ backups/
 
 # Redis dump created by a local dev redis-server
 dump.rdb
+BRINGUP.md
+TASKS-ADMIN-UX.md

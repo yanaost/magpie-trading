@@ -58,6 +58,16 @@ class FakeStrategy implements Strategy {
   readonly timeframe = "weekly" as Strategy["timeframe"];
   readonly defaultMode: Mode = "APPROVE";
   readonly riskParams = DEFAULT_RISK_PARAMS;
+  readonly meta = {
+    summary: "test",
+    mechanic: {
+      trigger: ["t"],
+      exitPlan: ["e"],
+      llmRole: "l",
+      dataNeeds: "d",
+    },
+    dataReady: true,
+  };
   manageAction: ExitAction | null = null;
 
   constructor(private readonly signals: QuantSignal[]) {}

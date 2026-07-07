@@ -8,6 +8,7 @@ import type {
   PerformanceStats,
   PerformanceView,
   PositionView,
+  StrategyMeta,
   StrategySummary,
 } from "@/lib/api";
 import { getBacktests, getPerformance, getStrategies } from "@/lib/browser-api";
@@ -123,6 +124,8 @@ function StrategyPanel({
 }): ReactNode {
   return (
     <div className="panel" style={{ marginTop: "0.75rem" }}>
+      {strategy.meta ? <AboutStrategy meta={strategy.meta} /> : null}
+
       <table>
         <thead>
           <tr>
@@ -187,6 +190,82 @@ function StrategyPanel({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * "About this strategy" (spec §U2): a collapsible plain-language explainer at the
+ * top of each tab — summary, the entry checklist, the exit plan, what Claude
+ * verifies, and the data it needs. Shows a warning chip when that data feed is
+ * still a stub provider so an operator never mistakes a WATCH-only stub for a
+ * live, tradeable setup. Rendered open by default via native <details>.
+ */
+function AboutStrategy({ meta }: { meta: StrategyMeta }): ReactNode {
+  return (
+    <details open style={aboutStyle}>
+      <summary style={aboutSummaryStyle}>About this strategy</summary>
+
+      <p style={{ margin: "0.6rem 0 0.4rem" }}>{meta.summary}</p>
+
+      {!meta.dataReady ? (
+        <div style={{ margin: "0.5rem 0" }}>
+          <span
+            className="badge"
+            title="This strategy's data feed is a placeholder — it will not produce live signals until the feed is connected."
+            style={{
+              borderColor: "var(--degraded)",
+              color: "var(--degraded)",
+            }}
+          >
+            <span className="dot" style={{ background: "var(--degraded)" }} />
+            data feed not wired
+          </span>
+        </div>
+      ) : null}
+
+      <div className="row" style={{ gap: "1.5rem", flexWrap: "wrap" }}>
+        <AboutList title="Entry checklist" items={meta.mechanic.trigger} />
+        <AboutList title="Exit plan" items={meta.mechanic.exitPlan} />
+      </div>
+
+      <dl style={aboutMetaGrid}>
+        <div>
+          <dt className="muted" style={aboutTermStyle}>
+            Claude&apos;s role
+          </dt>
+          <dd style={{ margin: 0 }}>{meta.mechanic.llmRole}</dd>
+        </div>
+        <div>
+          <dt className="muted" style={aboutTermStyle}>
+            Data it needs
+          </dt>
+          <dd style={{ margin: 0 }}>{meta.mechanic.dataNeeds}</dd>
+        </div>
+      </dl>
+    </details>
+  );
+}
+
+function AboutList({
+  title,
+  items,
+}: {
+  title: string;
+  items: string[];
+}): ReactNode {
+  return (
+    <div style={{ flex: "1 1 260px", minWidth: "240px" }}>
+      <div className="muted" style={aboutTermStyle}>
+        {title}
+      </div>
+      <ul style={{ margin: "0.25rem 0 0", paddingLeft: "1.1rem" }}>
+        {items.map((line, i) => (
+          <li key={i} style={{ marginBottom: "0.2rem" }}>
+            {line}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -491,6 +570,33 @@ const activeTabStyle: CSSProperties = {
 const sectionStyle: CSSProperties = {
   margin: "1rem 0 0.5rem",
   fontSize: "0.95rem",
+};
+
+const aboutStyle: CSSProperties = {
+  marginBottom: "1rem",
+  padding: "0.75rem 1rem",
+  border: "1px solid var(--border)",
+  borderRadius: "10px",
+  background: "var(--bg)",
+};
+
+const aboutSummaryStyle: CSSProperties = {
+  cursor: "pointer",
+  fontWeight: 600,
+  fontSize: "0.95rem",
+};
+
+const aboutMetaGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "0.75rem 1.5rem",
+  margin: "0.75rem 0 0",
+};
+
+const aboutTermStyle: CSSProperties = {
+  fontSize: "0.72rem",
+  textTransform: "uppercase",
+  letterSpacing: "0.03em",
 };
 
 const cardStyle: CSSProperties = {

@@ -25,6 +25,7 @@ import {
   type RiskParams,
   type StrategyTimeframe,
   type Strategy,
+  type StrategyMeta,
   type Ticker,
   DEFAULT_RISK_PARAMS,
 } from "@magpie/core";
@@ -51,6 +52,27 @@ export class ValuationGravityStrategy implements Strategy {
   readonly timeframe: StrategyTimeframe = "observation";
   readonly defaultMode: Mode = "WATCH";
   readonly riskParams: RiskParams;
+  readonly meta: StrategyMeta = {
+    summary:
+      "A watch-only research notebook, not a trading strategy. It tracks a handful " +
+      "of expensive retail-darling stocks against a solid peer and records how " +
+      "stretched their valuation looks after each earnings report. It never places " +
+      "an order — it is purely gathering evidence that rich multiples eventually revert.",
+    mechanic: {
+      trigger: [
+        "In the two weeks after a darling reports earnings, its price-to-sales multiple is compared to an established peer",
+        "The observation is journaled — no entry signal is ever produced",
+      ],
+      exitPlan: [
+        "Not applicable — this strategy holds no positions and cannot place a trade",
+      ],
+      llmRole:
+        "Claude adds plain-language color on whether the valuation gap looks justified, purely for the journal.",
+      dataNeeds:
+        "Fundamentals feed for price-to-sales multiples (not yet wired)",
+    },
+    dataReady: false,
+  };
 
   private readonly watchlist: readonly ValuationPair[];
   private readonly calendar: CalendarProvider;

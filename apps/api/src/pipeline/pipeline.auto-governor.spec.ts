@@ -72,6 +72,16 @@ class WhipsawStrategy implements Strategy {
   readonly timeframe = "intraday" as Strategy["timeframe"];
   readonly defaultMode: Mode = "AUTO";
   readonly riskParams = DEFAULT_RISK_PARAMS;
+  readonly meta = {
+    summary: "test",
+    mechanic: {
+      trigger: ["t"],
+      exitPlan: ["e"],
+      llmRole: "l",
+      dataNeeds: "d",
+    },
+    dataReady: true,
+  };
   async universe(): Promise<Ticker[]> {
     return [TICK];
   }

@@ -6,12 +6,28 @@
 
 const API_URL = process.env.API_URL ?? "http://localhost:3001";
 
+/** Plain-language mechanics for a strategy (spec §U2). */
+export interface StrategyMechanic {
+  trigger: string[];
+  exitPlan: string[];
+  llmRole: string;
+  dataNeeds: string;
+}
+
+/** The "About this strategy" content served with each strategy. */
+export interface StrategyMeta {
+  summary: string;
+  mechanic: StrategyMechanic;
+  dataReady: boolean;
+}
+
 export interface StrategySummary {
   id: string;
   name: string;
   timeframe: string;
   mode: string;
   target: string;
+  meta: StrategyMeta | null;
 }
 
 export interface CandleCount {

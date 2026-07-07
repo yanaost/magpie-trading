@@ -34,6 +34,7 @@ import {
   type RiskParams,
   type StrategyTimeframe,
   type Strategy,
+  type StrategyMeta,
   type Ticker,
   DEFAULT_RISK_PARAMS,
 } from "@magpie/core";
@@ -56,6 +57,29 @@ export class FridayMondayFlowStrategy implements Strategy {
   readonly timeframe: StrategyTimeframe = "weekly";
   readonly defaultMode: Mode = "APPROVE";
   readonly riskParams: RiskParams;
+  readonly meta: StrategyMeta = {
+    summary:
+      "Bets that crowded, retail-favorite names that close strong on Friday tend " +
+      "to gap up and run early the next week as weekend enthusiasm hits. It only " +
+      "enters if Monday actually confirms the strength, and never holds over a " +
+      "second weekend.",
+    mechanic: {
+      trigger: [
+        "The stock is on the Friday trending / most-bought list",
+        "It closes near its weekly high on Friday",
+        "A buy-stop is set just above Friday's high, so Monday must trade higher to fill",
+      ],
+      exitPlan: [
+        "If Monday opens weak and never fills, the order auto-cancels",
+        "A filled trade is sold into mid-week strength",
+        "Never held over the following weekend",
+      ],
+      llmRole:
+        "Claude confirms the Friday strength reflects real crowd interest likely to carry into Monday, not a one-off spike.",
+      dataNeeds: "Friday trending / most-bought list (not yet wired)",
+    },
+    dataReady: false,
+  };
 
   private readonly params: FridayMondayParams;
   private readonly trending: TrendingListProvider;
