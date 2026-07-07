@@ -27,6 +27,8 @@ const SUMMARY: StrategySummary = {
   mode: "APPROVE",
   target: "PAPER",
   meta: null,
+  proposalTtlMs: 900_000,
+  autoMaxTradesPerDay: 5,
 };
 
 describe("DashboardController.setStrategy", () => {

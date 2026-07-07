@@ -5,6 +5,8 @@ import {
   computePerformance,
   emptyPerformance,
   EXECUTION_TARGETS,
+  DEFAULT_PROPOSAL_TTL_MS,
+  DEFAULT_AUTO_GOVERNOR_PARAMS,
   type ClosedTrade,
   type PerformanceStats,
   type StrategyMeta,
@@ -26,7 +28,24 @@ export interface StrategySummary {
   target: string;
   /** Plain-language description & mechanics (spec §U2); null for unknown ids. */
   meta: StrategyMeta | null;
+  /** How long an APPROVE proposal stays open before it expires, ms (spec §U4). */
+  proposalTtlMs: number;
+  /** AUTO daily trade cap shown in the switch-to-AUTO confirmation (spec §U4). */
+  autoMaxTradesPerDay: number;
 }
+
+/**
+ * Config values surfaced to the mode/target UI (spec §U4). Sourced from the core
+ * defaults so the captions render from config, not hardcoded prose — change the
+ * constant and the displayed text follows. TTL is global (no per-strategy
+ * override is wired) and the AUTO governor runs one shared instance on the
+ * defaults, so both are the same for every strategy today; kept per-summary so a
+ * future per-strategy override flows through without an API-shape change.
+ */
+const STRATEGY_CONFIG = {
+  proposalTtlMs: DEFAULT_PROPOSAL_TTL_MS,
+  autoMaxTradesPerDay: DEFAULT_AUTO_GOVERNOR_PARAMS.maxTradesPerDay,
+} as const;
 
 /**
  * Static strategy metadata keyed by id, built once at module load (the roster is
@@ -107,6 +126,7 @@ export class DashboardService {
     return rows.map((r) => ({
       ...r,
       meta: STRATEGY_META_BY_ID[r.id] ?? null,
+      ...STRATEGY_CONFIG,
     }));
   }
 
@@ -207,6 +227,7 @@ export class DashboardService {
       mode: change.mode ?? before.mode,
       target: change.target ?? before.target,
       meta: STRATEGY_META_BY_ID[before.id] ?? null,
+      ...STRATEGY_CONFIG,
     };
 
     // Push the change so every open dashboard's state chips update live (§U3).

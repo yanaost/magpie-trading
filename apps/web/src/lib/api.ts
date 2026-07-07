@@ -28,6 +28,10 @@ export interface StrategySummary {
   mode: string;
   target: string;
   meta: StrategyMeta | null;
+  /** APPROVE proposal time-to-live in ms, from config (spec §U4). */
+  proposalTtlMs: number;
+  /** AUTO daily trade cap, shown in the switch-to-AUTO confirm (spec §U4). */
+  autoMaxTradesPerDay: number;
 }
 
 export interface CandleCount {

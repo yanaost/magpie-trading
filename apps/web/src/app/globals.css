@@ -170,6 +170,17 @@ button:hover {
   font-size: 0.85rem;
 }
 
+/* Info popover trigger (U4): drop the native disclosure triangle. */
+summary.info-i {
+  list-style: none;
+}
+summary.info-i::-webkit-details-marker {
+  display: none;
+}
+summary.info-i::marker {
+  content: "";
+}
+
 /* State chips (U3): mode/target pills, colour-coded by seriousness. */
 .chip {
   display: inline-flex;

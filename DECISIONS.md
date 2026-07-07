@@ -1165,3 +1165,32 @@ deps)` looks the strategy up in `VARIANT_BUILDERS` and constructs it with the
   paper-only, hidden when everything is idle — the riskiest states can't hide
   behind an unopened tab. Gate green: web 0→3 tests, api still 191,
   typecheck/eslint/prettier clean.
+
+## U4 — Mode & target descriptions in the UI
+
+- **Copy lives in one module, verbatim.** `apps/web/src/lib/strategy-copy.ts`
+  holds the spec §U4 mode/target descriptions exactly as written; a test asserts
+  each string byte-for-byte so a future paraphrase fails CI (AC: "no jargon
+  beyond the terms defined above"). Both the info popovers and the per-selector
+  captions read from this one source.
+- **Captions render from config, not prose.** The APPROVE caption appends the
+  real proposal TTL via `formatTtl(strategy.proposalTtlMs)`; the ms value is
+  surfaced by the API from `DEFAULT_PROPOSAL_TTL_MS`, so changing the constant
+  changes the text (tested: 900000→"15 min", 300000→"5 min"). The AUTO confirm
+  shows `strategy.autoMaxTradesPerDay` from `DEFAULT_AUTO_GOVERNOR_PARAMS`.
+- **Two new API fields, sourced from core defaults.** `StrategySummary` gains
+  `proposalTtlMs` + `autoMaxTradesPerDay` (module-level `STRATEGY_CONFIG` in
+  dashboard.service). Both are global today — no per-strategy TTL override is
+  wired and the AUTO governor runs one shared instance on the defaults — but
+  they're carried per-summary so a future per-strategy override flows through
+  with no API-shape change. Honest over speculative: the values are the ones the
+  pipeline actually enforces.
+- **AUTO is gated by a pure guard.** `needsAutoConfirmation(next)` (true only for
+  AUTO) is the single rule; `StrategyControls.selectMode` opens an in-row confirm
+  panel instead of applying, and only "Enable AUTO" sends the change — so a stray
+  select can't arm hands-off trading. The guard is unit-tested (AC: "switching to
+  AUTO without confirming is impossible"); an in-app panel over `window.confirm`
+  keeps it styled and non-blocking. Popovers use native `<details>` (no
+  outside-click wiring, keyboard-accessible); the disclosure triangle is dropped
+  in CSS. Gate green: web 3→8 tests, api still 191, typecheck/eslint/prettier
+  clean.
