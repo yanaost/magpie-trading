@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { schema, and, desc, eq } from "@magpie/db";
 import {
   Simulator,
@@ -16,6 +16,7 @@ import {
   evaluatePromotionGate,
   PromotionGateError,
 } from "../promotion/promotion-gate.js";
+import { EventsGateway } from "../ws/events.gateway.js";
 
 export interface StrategySummary {
   id: string;
@@ -89,6 +90,7 @@ export class DashboardService {
   constructor(
     @Inject(DB_CLIENT) private readonly dbClient: DbClient,
     @Inject(SIMULATOR) private readonly simulator: Simulator,
+    @Optional() private readonly events?: EventsGateway,
   ) {}
 
   async strategies(): Promise<StrategySummary[]> {
@@ -198,7 +200,7 @@ export class DashboardService {
       },
     });
 
-    return {
+    const summary: StrategySummary = {
       id: before.id,
       name: before.name,
       timeframe: before.timeframe,
@@ -206,6 +208,11 @@ export class DashboardService {
       target: change.target ?? before.target,
       meta: STRATEGY_META_BY_ID[before.id] ?? null,
     };
+
+    // Push the change so every open dashboard's state chips update live (§U3).
+    this.events?.emitStrategies(summary);
+
+    return summary;
   }
 
   /** Count closed trades a strategy has completed at a given execution rung. */

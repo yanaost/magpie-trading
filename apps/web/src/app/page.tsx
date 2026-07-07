@@ -20,6 +20,7 @@ import {
 import LiveStatus from "./live-status";
 import KillSwitch from "./kill-switch";
 import StrategyTabs from "./strategy-tabs";
+import StrategyStatusSummary from "./strategy-status-summary";
 import Approvals from "./approvals";
 import Positions from "./positions";
 import SignalLog from "./signal-log";
@@ -63,6 +64,7 @@ export default async function Dashboard(): Promise<ReactNode> {
           <p className="muted">Single-user control surface · Phase 1</p>
         </div>
         <div className="row" style={{ gap: "0.5rem" }}>
+          <StrategyStatusSummary initial={strategies} />
           <Link className="badge" href="/llm-log">
             LLM log →
           </Link>

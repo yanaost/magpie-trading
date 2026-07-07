@@ -11,6 +11,7 @@ import {
   getPendingProposals,
   rejectProposal,
 } from "@/lib/browser-api";
+import { TargetChip } from "./chip";
 
 /**
  * Pending-approvals panel (T1.8/T1.9). Lists proposals awaiting a decision and
@@ -88,8 +89,8 @@ export default function Approvals({
             <tr key={p.id}>
               <td>{p.strategyId}</td>
               <td>
-                {p.side.toUpperCase()} {p.qty} {p.ticker} @ {p.entry}
-                <span className="muted"> · {p.executionTarget}</span>
+                {p.side.toUpperCase()} {p.qty} {p.ticker} @ {p.entry}{" "}
+                <TargetChip target={p.executionTarget} />
                 {p.signalId ? (
                   <div style={{ marginTop: "0.25rem" }}>
                     <Link

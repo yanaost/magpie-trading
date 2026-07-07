@@ -11,8 +11,10 @@ import type {
   StrategyMeta,
   StrategySummary,
 } from "@/lib/api";
-import { getBacktests, getPerformance, getStrategies } from "@/lib/browser-api";
+import { getBacktests, getPerformance } from "@/lib/browser-api";
 import StrategyControls from "./strategy-controls";
+import { ModeChip, TargetChip } from "./chip";
+import { useLiveStrategies } from "./use-live-strategies";
 
 const TARGETS = ["SIM", "PAPER", "LIVE"] as const;
 
@@ -36,46 +38,16 @@ export default function StrategyTabs({
   const [active, setActive] = useState(strategies[0]?.id ?? "");
 
   // The SSR roster is a point-in-time snapshot; mode/target can change from
-  // another tab, the kill switch, or this session. Re-poll so the badges track
-  // reality instead of freezing on the first render. Refresh on an interval and
-  // whenever the tab regains focus (the moment you look back at it).
-  const [roster, setRoster] = useState(strategies);
-  useEffect(() => {
-    let live = true;
-    const sync = (): void => {
-      if (document.visibilityState === "hidden") return;
-      getStrategies()
-        .then((next) => {
-          if (live) setRoster(next);
-        })
-        .catch(() => {
-          /* transient API blip — keep the last known roster */
-        });
-    };
-    const interval = setInterval(sync, 10_000);
-    window.addEventListener("focus", sync);
-    document.addEventListener("visibilitychange", sync);
-    return () => {
-      live = false;
-      clearInterval(interval);
-      window.removeEventListener("focus", sync);
-      document.removeEventListener("visibilitychange", sync);
-    };
-  }, []);
+  // another browser tab, the kill switch, or this session. The shared hook keeps
+  // it live over the WebSocket (plus a poll backstop) so the tab-strip chips
+  // track reality instead of freezing on the first render (spec §U3).
+  const { strategies: roster, applyChange } = useLiveStrategies(strategies);
 
   if (roster.length === 0) {
     return <p className="muted">No strategies configured yet.</p>;
   }
 
   const current = roster.find((s) => s.id === active) ?? roster[0]!;
-
-  // A mode/target edit updates the parent roster right away so the badge and the
-  // panel survive a tab switch before the next background poll lands.
-  const applyChange = (updated: StrategySummary): void => {
-    setRoster((prev) =>
-      prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)),
-    );
-  };
 
   return (
     <div>
@@ -90,7 +62,17 @@ export default function StrategyTabs({
               onClick={() => setActive(s.id)}
               style={selected ? { ...tabStyle, ...activeTabStyle } : tabStyle}
             >
-              {s.name}
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.35rem",
+                }}
+              >
+                {s.name}
+                <ModeChip mode={s.mode} />
+                <TargetChip target={s.target} />
+              </span>
               <span className="muted" style={{ fontSize: "0.72rem" }}>
                 {s.timeframe}
               </span>

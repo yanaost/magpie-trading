@@ -49,4 +49,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitPositions(payload: unknown): void {
     this.server?.emit("positions", payload);
   }
+
+  /**
+   * Broadcast a strategy mode/target change (spec §U3) so every open dashboard
+   * re-pulls the roster and its state chips update live — including this-tab
+   * edits echoed to other tabs. Kill-switch demotions ride the `alerts` channel.
+   */
+  emitStrategies(payload: unknown): void {
+    this.server?.emit("strategies", payload);
+  }
 }

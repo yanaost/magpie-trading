@@ -1133,3 +1133,35 @@ deps)` looks the strategy up in `VARIANT_BUILDERS` and constructs it with the
   (`strategy-tabs.tsx` `AboutStrategy`): summary, stub-feed warning chip, entry
   checklist, exit plan, Claude's role, data needs. Gate green: api 191, strategies
   148 (+4 metadata tests), typecheck/eslint/prettier + full suite clean.
+
+## U3 — Mode + target state chips at the tab level
+
+- **One shared chip, one colour source.** `apps/web/src/app/chip.tsx`
+  (`ModeChip`/`TargetChip`) renders the same pill in the tab strip, on proposal
+  cards, and in the header summary. Colour comes from pure `modeTone`/
+  `targetTone` in `apps/web/src/lib/chip-tone.ts` (no React/DOM) so the mapping
+  is unit-tested standalone (spec §U3 AC "component tests for chip colour
+  mapping"). Three seriousness tones: `idle` grey (OFF/WATCH/SIM), `amber`
+  (APPROVE/PAPER), `danger` red (AUTO/LIVE). AUTO and LIVE share the red
+  `danger` token — "consistent across the app" beat drawing a second near-red
+  just to distinguish AUTO's tint from LIVE's, which read as noise at chip size.
+- **Web gets a test runner.** apps/web had no `test` script; added
+  `vitest run` + `vitest` devDep (already in the monorepo, installed offline) so
+  `pnpm -r test` now covers the chip mapping. Kept the tone logic in a plain
+  `.ts` (not the `.tsx` component) so the test needs no jsdom/React harness —
+  simplest path that satisfies the AC.
+- **Live updates: push + re-fetch, DB stays the source of truth.** New
+  `strategies` WS channel (`EventsGateway.emitStrategies`) fires from
+  `DashboardService.setStrategy` on every mode/target change. The shared
+  `useLiveStrategies` hook (tab strip + header summary) re-pulls the authoritative
+  roster on a `strategies` push, on an `alerts` push (kill-switch demote already
+  broadcasts there — no kill-switch code touched), and on a 10s/focus backstop.
+  Re-fetching rather than trusting the payload means a cross-tab edit and a
+  kill-switch trip both converge on the same DB state. `EventsGateway` is
+  injected `@Optional()` into `DashboardService` so non-wired constructions (and
+  the controller spec's fake) don't need it.
+- **Header summary.** `StrategyStatusSummary` shows a compact "N AUTO · M PAPER ·
+  K LIVE" chip in the header, red when anything is AUTO/LIVE, amber for
+  paper-only, hidden when everything is idle — the riskiest states can't hide
+  behind an unopened tab. Gate green: web 0→3 tests, api still 191,
+  typecheck/eslint/prettier clean.

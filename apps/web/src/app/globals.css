@@ -170,6 +170,34 @@ button:hover {
   font-size: 0.85rem;
 }
 
+/* State chips (U3): mode/target pills, colour-coded by seriousness. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.chip-idle {
+  border-color: var(--border);
+  color: var(--muted);
+}
+.chip-amber {
+  border-color: var(--degraded);
+  color: var(--degraded);
+  background: rgba(210, 153, 34, 0.1);
+}
+.chip-danger {
+  border-color: var(--down);
+  color: var(--down);
+  background: rgba(248, 81, 73, 0.12);
+}
+
 /* LLM dialog log (U1) */
 .badge.proceed {
   border-color: var(--up);
