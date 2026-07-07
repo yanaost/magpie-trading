@@ -158,7 +158,14 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
+      # Server-side (SSR) fetches reach the API over the compose network, so the
+      # base is api:3001 — NOT the .env value localhost:3001 (which, inside this
+      # container, points at the web service itself).
+      API_URL: http://api:3001
+      # Browser calls hit the host-published API port.
       NEXT_PUBLIC_API_URL: http://localhost:3001
     ports:
       - "127.0.0.1:3000:3000"
