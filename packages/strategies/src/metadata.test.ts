@@ -45,8 +45,8 @@ describe("strategy metadata", () => {
 
   it("marks exactly the live-feed strategies as dataReady", () => {
     // qual-sphb (weekly price candles) + ai-crowding-filter (Claude web search)
-    // were the original two; friday-monday-flow was wired to run on the live
-    // daily-candle feed against a fixed watchlist, so it joins them.
+    // were the original two; friday-monday-flow and hype-momentum were then wired
+    // to run on the live daily-candle feed against a fixed watchlist, so they join.
     const map = buildStrategyMetaById();
     const ready = Object.entries(map)
       .filter(([, meta]) => meta.dataReady)
@@ -55,6 +55,7 @@ describe("strategy metadata", () => {
     expect(ready).toEqual([
       "ai-crowding-filter",
       "friday-monday-flow",
+      "hype-momentum",
       "qual-sphb",
     ]);
   });

@@ -7,7 +7,10 @@ import type {
   ProposalDraft,
   Ticker,
 } from "@magpie/core";
-import { HypeMomentumStrategy } from "./hype-momentum.strategy.js";
+import {
+  HypeMomentumStrategy,
+  DEFAULT_HYPE_MOMENTUM_WATCHLIST,
+} from "./hype-momentum.strategy.js";
 import {
   StaticHypeCandidateProvider,
   StaticEarningsSchedule,
@@ -107,6 +110,17 @@ describe("HypeMomentumStrategy — metadata", () => {
     const s = makeStrategy();
     expect(s.id).toBe("hype-momentum");
     expect(s.timeframe).toBe("swing");
+  });
+
+  it("ships wired to the live watchlist, not an empty stub", async () => {
+    // The default construction (what the registry/pipeline uses) must run on
+    // real data: a non-empty universe of the ingested tickers, and dataReady so
+    // the "data feed not wired" chip clears.
+    const strat = new HypeMomentumStrategy();
+    expect(strat.meta.dataReady).toBe(true);
+    const universe = await strat.universe(ctx(23));
+    expect(universe).toEqual([...DEFAULT_HYPE_MOMENTUM_WATCHLIST]);
+    expect(universe.length).toBeGreaterThan(0);
   });
 });
 

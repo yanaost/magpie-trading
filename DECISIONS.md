@@ -1245,3 +1245,28 @@ deps)` looks the strategy up in `VARIANT_BUILDERS` and constructs it with the
   strategies (adds friday-monday-flow); added a wiring test (default universe =
   watchlist, `dataReady` true) and a scan test proving the real detector emits on
   a Friday close. Strategies suite 148→150.
+
+## Wire real data for hype-momentum (second stub → live)
+
+- **Same pattern as friday-monday-flow**, applied to the second-easiest stub. The
+  volume-spike breakout detector runs entirely on daily price+volume candles,
+  which we already ingest — the only missing input was the candidate list. Gave
+  `HypeMomentumStrategy` a `DEFAULT_HYPE_MOMENTUM_WATCHLIST`
+  (`["QUAL","SPHB","SPY"]`) as the constructor default for its
+  `HypeCandidateProvider`, so the default instance (registry/pipeline) runs the
+  real detector on live candles. `dataReady` → `true`.
+- **The earnings feed is deliberately left as the null default — and that is
+  correct for this watchlist.** QUAL/SPHB/SPY are ETFs with no earnings, so the
+  strategy's hard "exit before any earnings date" rule has nothing to fire on and
+  `StaticEarningsSchedule()` returning null is accurate, not a stub gap. This is
+  the key difference from a single-name wiring: **if the watchlist is later
+  swapped for individual stocks, a real `EarningsSchedule` MUST be injected at the
+  same time** or the never-hold-into-earnings guard would silently no-op. The
+  strategy doc comment and `dataNeeds` copy both call this out.
+- **dataNeeds is honest about what's live vs. placeholder:** "Daily price+volume
+  candles (live IB feed) ... a live trending/most-bought screen and earnings-date
+  feed are not yet wired (earnings is N/A for these ETFs)." Upgrading to a live
+  most-bought screen is a provider swap only.
+- **Tests:** metadata dataReady assertion now expects four live-feed strategies
+  (adds hype-momentum); added a wiring test (default universe = watchlist,
+  `dataReady` true). Strategies suite 150→151.

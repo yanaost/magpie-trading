@@ -49,6 +49,22 @@ import {
   type HypeView,
 } from "./spike-detector.js";
 
+/**
+ * Default candidate watchlist the spike scan runs against until a live trending /
+ * most-bought / unusual-volume screen is wired. These are the tickers the
+ * market-data service ingests daily bars for (`MARKET_DATA_TICKERS`, default
+ * QUAL/SPHB/SPY), so the volume-spike breakout detector runs on **real**
+ * price+volume data out of the box rather than an empty stub. They are ETFs, so
+ * the earnings-date schedule is genuinely N/A (the "exit before earnings" rule
+ * has nothing to fire on) — swapping in single-name candidates later must be
+ * paired with a real {@link EarningsSchedule} so that hard rule stays enforced.
+ */
+export const DEFAULT_HYPE_MOMENTUM_WATCHLIST: readonly Ticker[] = [
+  "QUAL",
+  "SPHB",
+  "SPY",
+];
+
 export class HypeMomentumStrategy implements Strategy {
   readonly id = "hype-momentum";
   readonly name = "Hype Momentum";
@@ -74,9 +90,11 @@ export class HypeMomentumStrategy implements Strategy {
       llmRole:
         "Claude confirms the catalyst is real and the move is still early-stage, not already parabolic and late.",
       dataNeeds:
-        "Trending / most-bought list and earnings-date feeds (not yet wired)",
+        "Daily price+volume candles (live IB feed), scanned over a fixed " +
+        "QUAL/SPHB/SPY watchlist; a live trending/most-bought screen and " +
+        "earnings-date feed are not yet wired (earnings is N/A for these ETFs)",
     },
-    dataReady: false,
+    dataReady: true,
   };
 
   private readonly params: HypeMomentumParams;
@@ -86,7 +104,9 @@ export class HypeMomentumStrategy implements Strategy {
   private readonly views = new Map<Ticker, HypeView>();
 
   constructor(
-    candidateProvider: HypeCandidateProvider = new StaticHypeCandidateProvider(),
+    candidateProvider: HypeCandidateProvider = new StaticHypeCandidateProvider(
+      DEFAULT_HYPE_MOMENTUM_WATCHLIST,
+    ),
     earnings: EarningsSchedule = new StaticEarningsSchedule(),
     params: Partial<HypeMomentumParams> = {},
     riskParams: RiskParams = DEFAULT_RISK_PARAMS,
