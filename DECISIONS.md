@@ -1102,6 +1102,28 @@ deps)` looks the strategy up in `VARIANT_BUILDERS` and constructs it with the
   covered for SIM by the unit tests; the live PAPER round-trip is pending the
   paper account.
 
+## U1 — LLM dialog log (full conversation visibility)
+
+- **`verdict` stays non-null for `signal_analysis` rows.** The LLM trust boundary
+  always yields a deterministic proceed/veto even on failure, so the money-path
+  `verdict` column keeps its existing contract; the new `outcome` column
+  (`proceed` | `veto` | `veto_by_failure` + `error_text`) is what distinguishes a
+  real model veto from a timeout/parse/transport failure. `verdict` was only made
+  nullable for `crowding_scan` rows, which have no proceed/veto. This kept the
+  existing money-path timeout test (`verdict === "veto"`) intact per the
+  no-behavior-change constraint.
+- **Symmetric `describeCall()`** on both the analyst client and the crowding
+  researcher captures the exact system/user prompt + params *before* the call, so
+  a failed call still logs the dialog it attempted (not just an error).
+- **Crowding repo injected `@Optional`** so existing 3-arg constructions and the
+  offline `NullCrowdingResearcher` (which returns `dialog: null` → writes nothing)
+  stay valid and don't pollute the log.
+- **`/llm-logs` uses no `/api` prefix** (matches `/proposals`, `/killswitch`).
+- **Secret safety is asserted, not assumed.** A test proves `ANTHROPIC_API_KEY`
+  never lands in stored prompts/params or the API payload; verified again at
+  runtime against a real crowding call (key absent from both payload and DB
+  columns).
+
 ## U2 — In-product "About this strategy" (strategy description & mechanics)
 
 - **Metadata lives on the `Strategy` interface (core), not in the DB.** Added
