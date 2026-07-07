@@ -7,7 +7,10 @@ import type {
   ProposalDraft,
   Ticker,
 } from "@magpie/core";
-import { FridayMondayFlowStrategy } from "./friday-monday.strategy.js";
+import {
+  FridayMondayFlowStrategy,
+  DEFAULT_FRIDAY_MONDAY_WATCHLIST,
+} from "./friday-monday.strategy.js";
 import { StaticTrendingListProvider } from "./trending-list.js";
 import { TradingCalendar } from "./trading-week.js";
 import {
@@ -88,6 +91,30 @@ function positionFrom(draft: ProposalDraft, qty = 100): Position {
     openedAt: new Date("2024-03-11T00:00:00.000Z"),
   };
 }
+
+describe("FridayMondayFlowStrategy — wiring", () => {
+  it("ships wired to the live watchlist, not an empty stub", async () => {
+    // The default construction (what the registry/pipeline uses) must run on
+    // real data: a non-empty universe of the ingested tickers, and dataReady so
+    // the "data feed not wired" chip clears.
+    const strat = new FridayMondayFlowStrategy();
+    expect(strat.meta.dataReady).toBe(true);
+    const universe = await strat.universe(ctx(WEEK1, "2024-03-08"));
+    expect(universe).toEqual([...DEFAULT_FRIDAY_MONDAY_WATCHLIST]);
+    expect(universe.length).toBeGreaterThan(0);
+  });
+
+  it("runs the real detector over watchlist candles on a Friday close", async () => {
+    // With a real (non-empty) universe and daily candles closing near the weekly
+    // high, the wired default emits — proving the scan path works end to end.
+    const strat = new FridayMondayFlowStrategy(
+      new StaticTrendingListProvider([FLOW]),
+    );
+    const fri = await strat.scan(ctx(WEEK1, "2024-03-08"));
+    expect(fri).toHaveLength(1);
+    expect(fri[0]!.trigger.kind).toBe("weekly-high-close");
+  });
+});
 
 describe("FridayMondayFlowStrategy — signalling", () => {
   it("fires only on the Friday week-close, not mid-week", async () => {

@@ -51,6 +51,20 @@ import {
   type FlowView,
 } from "./flow-detector.js";
 
+/**
+ * Default watchlist the flow scan runs against until a live trending /
+ * most-bought API is wired. These are exactly the tickers the market-data
+ * service ingests daily bars for (`MARKET_DATA_TICKERS`, default QUAL/SPHB/SPY),
+ * so the strategy runs on **real** price data out of the box rather than an empty
+ * stub. Swapping this for a live most-bought feed is a provider change only —
+ * the scan/detector logic is untouched.
+ */
+export const DEFAULT_FRIDAY_MONDAY_WATCHLIST: readonly Ticker[] = [
+  "QUAL",
+  "SPHB",
+  "SPY",
+];
+
 export class FridayMondayFlowStrategy implements Strategy {
   readonly id = "friday-monday-flow";
   readonly name = "Friday→Monday Flow";
@@ -76,9 +90,11 @@ export class FridayMondayFlowStrategy implements Strategy {
       ],
       llmRole:
         "Claude confirms the Friday strength reflects real crowd interest likely to carry into Monday, not a one-off spike.",
-      dataNeeds: "Friday trending / most-bought list (not yet wired)",
+      dataNeeds:
+        "Daily price candles (live IB feed), scanned against a fixed " +
+        "QUAL/SPHB/SPY watchlist until a live most-bought feed is wired",
     },
-    dataReady: false,
+    dataReady: true,
   };
 
   private readonly params: FridayMondayParams;
@@ -88,7 +104,9 @@ export class FridayMondayFlowStrategy implements Strategy {
   private readonly views = new Map<Ticker, FlowView>();
 
   constructor(
-    trending: TrendingListProvider = new StaticTrendingListProvider(),
+    trending: TrendingListProvider = new StaticTrendingListProvider(
+      DEFAULT_FRIDAY_MONDAY_WATCHLIST,
+    ),
     calendar: TradingCalendar = new TradingCalendar(),
     params: Partial<FridayMondayParams> = {},
     riskParams: RiskParams = DEFAULT_RISK_PARAMS,

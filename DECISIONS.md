@@ -1113,7 +1113,7 @@ deps)` looks the strategy up in `VARIANT_BUILDERS` and constructs it with the
   existing money-path timeout test (`verdict === "veto"`) intact per the
   no-behavior-change constraint.
 - **Symmetric `describeCall()`** on both the analyst client and the crowding
-  researcher captures the exact system/user prompt + params *before* the call, so
+  researcher captures the exact system/user prompt + params _before_ the call, so
   a failed call still logs the dialog it attempted (not just an error).
 - **Crowding repo injected `@Optional`** so existing 3-arg constructions and the
   offline `NullCrowdingResearcher` (which returns `dialog: null` → writes nothing)
@@ -1216,3 +1216,32 @@ deps)` looks the strategy up in `VARIANT_BUILDERS` and constructs it with the
   outside-click wiring, keyboard-accessible); the disclosure triangle is dropped
   in CSS. Gate green: web 3→8 tests, api still 191, typecheck/eslint/prettier
   clean.
+
+## Wire real data for friday-monday-flow (first stub → live)
+
+- **Picked friday-monday-flow as the easiest of the 6 stubs to wire.** It was the
+  only stub whose sole missing input was a _list of tickers_; its price data is
+  daily (`1d`) candles, which the market-data service already ingests for
+  QUAL/SPHB/SPY (90 bars present). snapback/squeeze/earnings/hype/valuation each
+  need a genuinely external feed (gap screener, short interest, earnings
+  calendar, social, fundamentals) not derivable from the candles table.
+- **Wired via the strategy's default provider, not the registry.** Gave
+  `FridayMondayFlowStrategy` a `DEFAULT_FRIDAY_MONDAY_WATCHLIST`
+  (`["QUAL","SPHB","SPY"]`) as the constructor default for its
+  `TrendingListProvider`, replacing the empty `StaticTrendingListProvider()`
+  stub. So `new FridayMondayFlowStrategy()` — what `registry.ts`/the pipeline use
+  — now runs the real weekly-high-close detector over live daily candles with no
+  registry change and no DB/ingestion change. `dataReady` flipped to `true` and
+  the "data feed not wired" chip clears.
+- **The watchlist is a fixed list, and the metadata says so.** `dataNeeds` now
+  reads "Daily price candles (live IB feed), scanned against a fixed QUAL/SPHB/SPY
+  watchlist until a live most-bought feed is wired" — honest that the _price_
+  feed is live while the _trending_ source is a placeholder. Upgrading to a live
+  most-bought API later is a provider swap only; scan/detector/pipeline are
+  untouched. The watchlist is hardcoded to the ingested tickers rather than read
+  from `MARKET_DATA_TICKERS` (packages/strategies has no app env); if that env is
+  customized, inject a provider at the pipeline layer as a follow-up.
+- **Tests:** the metadata dataReady assertion now expects three live-feed
+  strategies (adds friday-monday-flow); added a wiring test (default universe =
+  watchlist, `dataReady` true) and a scan test proving the real detector emits on
+  a Friday close. Strategies suite 148→150.
